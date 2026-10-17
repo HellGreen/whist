@@ -32,8 +32,9 @@ export const NOLOS = [
 export const noloDef = key => NOLOS.find(x => x.key === key);
 const suffixIndex = key => SUFFIXES.findIndex(x => x.key === key);
 
+// hold: en spiller tidligere i melderækkefølgen må melde det samme som en senere spiller.
 export function defaultRules() {
-  return { bids: Object.fromEntries([...SUFFIXES, ...NOLOS].map(o => [o.key, o.default])) };
+  return { bids: Object.fromEntries([...SUFFIXES, ...NOLOS].map(o => [o.key, o.default])), hold: true };
 }
 
 export function sanitizeRules(raw) {
@@ -41,6 +42,7 @@ export function sanitizeRules(raw) {
   for (const key of Object.keys(rules.bids)) {
     if (typeof raw?.bids?.[key] === 'boolean') rules.bids[key] = raw.bids[key];
   }
+  if (typeof raw?.hold === 'boolean') rules.hold = raw.hold;
   return rules;
 }
 

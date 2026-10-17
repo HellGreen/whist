@@ -47,8 +47,9 @@ const fmtDay = s => toDate(s).toLocaleDateString('da-DK', { weekday: 'long', day
 const fmtTime = s => toDate(s).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' });
 const fmtSec = ms => (ms == null ? '–' : `${(ms / 1000).toLocaleString('da-DK', { maximumFractionDigits: 1 })} sek.`);
 
-const SORT_ORDER = { J: 0, S: 1, H: 2, C: 3, D: 4 };
-const sortCards = cards => [...cards].sort((a, b) => SORT_ORDER[a[0]] - SORT_ORDER[b[0]] || +b.slice(1) - +a.slice(1));
+// Samme rækkefølge som på serveren: laveste kort først, jokerne yderst til højre.
+const SORT_ORDER = { S: 0, H: 1, C: 2, D: 3, J: 4 };
+const sortCards = cards => [...cards].sort((a, b) => SORT_ORDER[a[0]] - SORT_ORDER[b[0]] || +a.slice(1) - +b.slice(1));
 
 // ---------- Forbindelse ----------
 
@@ -212,12 +213,15 @@ function rulesBox(t, editable) {
       ${editable ? 'Som bordets ejer kan du slå påhæng og nolo-meldinger til og fra.' : ''}</p>
     <h4>Påhæng</h4>${info.suffixes.map(opt).join('')}
     <h4>Nolo-meldinger</h4>${info.nolos.map(opt).join('')}
+    <h4>Melderunden</h4>
+    <label class="opt"><input type="checkbox" data-rule-opt="hold" ${t.rules.hold !== false ? 'checked' : ''} ${editable ? '' : 'disabled'}>
+      <span><b>Hold</b> – en spiller tidligere i melderækkefølgen (forhånd først) må melde det samme som en senere spiller
+      i stedet for at gå højere. Den senere spiller skal så gå højere eller passe.</span></label>
     <h4>Rangorden</h4>
     <ul>
       <li>Et antal stik med påhæng slår samme antal uden: 8 halve slår 8, men 9 slår 8 med påhæng.</li>
       ${order ? `<li>Påhæng fra lavest til højest: <b>${esc(order)}</b>${t.rules.bids.gode && t.rules.bids.halve ? ' – fx slår gode halve.' : '.'}</li>` : ''}
       ${nolos.map(x => `<li>${esc(x.label)} ligger mellem ${x.level} og ${x.level} med påhæng – den slås af ${x.level}+.</li>`).join('')}
-      <li>En spiller tidligere i melderunden må <i>holde</i> (melde det samme som) en senere spillers melding.</li>
       <li>Melderen kalder et es (ikke i trumf) for at finde sin makker. Kalder man et es, man selv har, er man selvmakker og får dobbelte point.</li>
       <li>Jokerne er de højeste trumfer (den første joker i et stik vinder). Uden trumf kan en joker altid spilles, men den vinder aldrig.</li>
       <li>Man tager enten hele katten og lægger 3 kort, eller beholder sine kort.</li>
@@ -853,10 +857,11 @@ document.addEventListener('change', e => {
     else modal.hidden.add(Number(hide));
     return renderModal();
   }
-  const key = e.target.dataset?.rule;
-  if (!key) return;
+  const { rule, ruleOpt } = e.target.dataset ?? {};
+  if (!rule && !ruleOpt) return;
   const rules = structuredClone(state.table.rules);
-  rules.bids[key] = e.target.checked;
+  if (rule) rules.bids[rule] = e.target.checked;
+  else rules[ruleOpt] = e.target.checked;
   socket.emit('table:rules', rules);
 });
 

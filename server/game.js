@@ -29,10 +29,10 @@ function shuffle(cards) {
   return cards;
 }
 
-// Jokere først, derefter spar, hjerter, klør, ruder – højeste kort først.
-const SORT_ORDER = { J: 0, S: 1, H: 2, C: 3, D: 4 };
+// Spar, hjerter, klør, ruder med laveste kort først – jokerne yderst til højre.
+const SORT_ORDER = { S: 0, H: 1, C: 2, D: 3, J: 4 };
 export function sortCards(cards) {
-  return [...cards].sort((a, b) => SORT_ORDER[a[0]] - SORT_ORDER[b[0]] || rankOf(b) - rankOf(a));
+  return [...cards].sort((a, b) => SORT_ORDER[a[0]] - SORT_ORDER[b[0]] || rankOf(a) - rankOf(b));
 }
 
 export function newRound(dealer, rules, deck = shuffle(makeDeck())) {
@@ -69,12 +69,13 @@ function expectTurn(s, seat, phase) {
 
 const order = (s, seat) => (seat - s.forehand + 4) % 4;
 
-// En melding skal være højere end den gældende. En spiller tidligere i
-// melderækkefølgen må dog "holde" (melde det samme som) en senere spiller.
+// En melding skal være højere end den gældende. Med reglen "hold" må en spiller
+// tidligere i melderækkefølgen dog melde det samme som en senere spiller.
 function canBid(s, seat, bid) {
   if (!s.high) return true;
   const r = bidRank(bid), hr = bidRank(s.high.bid);
-  return r > hr || (r === hr && order(s, seat) < order(s, s.high.seat));
+  const mayHold = s.rules.hold !== false; // gemte spil fra før reglen fandtes, havde den slået til
+  return r > hr || (mayHold && r === hr && order(s, seat) < order(s, s.high.seat));
 }
 
 export function allowedBids(s, seat) {

@@ -2,6 +2,7 @@
 
 - [ ] Snak om hvilke typer fejl AI-spillerne skal lave (i dag: et tilfældigt lovligt kort i 2 % / 5 % / 8 % af
       kortene for Forsigtig / Normal / Vovehals – se `gamble` i `server/ai.js`)
+- [ ] Dark mode, som spilleren altid kan slå til og fra – også ved bordet
 - [ ] Webcam: hver spiller kan aktivere sit webcam, som vises under spillerens navn ved bordet
       (der er allerede en tom `.cam`-plads under navnet i `public/app.js`; kræver HTTPS og WebRTC)
 - [ ] "Gå med" på vip og sol/ren sol

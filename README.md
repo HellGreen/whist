@@ -129,7 +129,8 @@ valgt følgende, som er bekræftet (alt kan justeres i `server/bids.js`, `server
 - **Påhæng, lav → høj:** vip < halve < stærke < gode < trumfløse < kvarte. Ethvert påhæng på N slår N, men ikke N+1
   (kvarte har altså ikke den særlige "7 kvarte slår 9"-regel).
 - **Nolo:** sol (9–9+), ren sol (10–10+), bordlægger (11–11+) og ren bordlægger (12–12+). Alle er med som standard.
-- **Holde:** en spiller tidligere i melderunden må melde det samme som en senere spiller.
+- **Holde:** en spiller tidligere i melderunden må melde det samme som en senere spiller. Reglen er slået til som
+  standard og kan slås fra af bordets ejer.
 - **Alle passer:** der gives om, og giveren rykker en plads.
 - **Jokere:** højeste trumfer, og den første joker i stikket vinder. En joker spillet ud kræver trumf. I spil uden
   trumf kan en joker altid spilles, men den vinder aldrig stikket.

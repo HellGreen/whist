@@ -174,3 +174,13 @@ test('AI: fire AI-spillere kan spille mange runder uden fejl', async () => {
   console.log('AI-runder spillet:', played, 'af 400 · [vundet, tabt] pr. meldingstype:', JSON.stringify(kinds));
   assert.ok(played > 100);
 });
+
+test('melderunde: uden reglen "hold" skal man altid melde højere', () => {
+  const s = G.newRound(3, { ...rules, hold: false }, G.makeDeck());
+  G.bid(s, 0, { n: 7, suffix: null });
+  G.bid(s, 1, { n: 8, suffix: null });
+  G.bid(s, 2, null);
+  G.bid(s, 3, null);
+  assert.throws(() => G.bid(s, 0, { n: 8, suffix: null }), /højere/);
+  assert.ok(G.allowedBids(s, 0).every(b => !b.hold));
+});
