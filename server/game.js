@@ -30,9 +30,11 @@ function shuffle(cards) {
 }
 
 // Spar, hjerter, klør, ruder med laveste kort først – jokerne yderst til højre.
+// I nolo-spil (sol osv.) tæller esset som 1 og vises derfor først i hver kulør.
 const SORT_ORDER = { S: 0, H: 1, C: 2, D: 3, J: 4 };
-export function sortCards(cards) {
-  return [...cards].sort((a, b) => SORT_ORDER[a[0]] - SORT_ORDER[b[0]] || rankOf(a) - rankOf(b));
+export function sortCards(cards, aceLow = false) {
+  const rank = c => (aceLow && rankOf(c) === 14 ? 1 : rankOf(c));
+  return [...cards].sort((a, b) => SORT_ORDER[a[0]] - SORT_ORDER[b[0]] || rank(a) - rank(b));
 }
 
 export function newRound(dealer, rules, deck = shuffle(makeDeck())) {
@@ -257,8 +259,10 @@ export function legalCards(s, seat) {
 }
 
 // Vinderen af et (evt. ufærdigt) stik, eller null hvis intet kort kan vinde endnu.
-export function trickWinnerOf(trick, trump) {
-  const highest = plays => plays.reduce((a, b) => (rankOf(b.card) > rankOf(a.card) ? b : a));
+// aceLow: i nolo-spil (sol osv.) tæller esset som 1.
+export function trickWinnerOf(trick, trump, aceLow = false) {
+  const rank = card => (aceLow && rankOf(card) === 14 ? 1 : rankOf(card));
+  const highest = plays => plays.reduce((a, b) => (rank(b.card) > rank(a.card) ? b : a));
   if (trump) {
     const joker = trick.find(p => isJoker(p.card)); // første joker vinder
     if (joker) return joker.seat;
@@ -269,7 +273,7 @@ export function trickWinnerOf(trick, trump) {
   const following = trick.filter(p => !isJoker(p.card) && suitOf(p.card) === led);
   return following.length ? highest(following).seat : null;
 }
-const trickWinner = s => trickWinnerOf(s.trick, trumpSuit(s));
+const trickWinner = s => trickWinnerOf(s.trick, trumpSuit(s), !!s.contract.bid.nolo);
 
 export function play(s, seat, card) {
   expectTurn(s, seat, 'play');
@@ -327,6 +331,13 @@ export function replayOf(s) {
   };
 }
 
+// Det senest afsluttede stik – også efter at næste stik er gået i gang (til "se sidste stik").
+function lastCompleted(s) {
+  const n = s.trickWinners?.length ?? 0;
+  if (!n || !s.plays) return null;
+  return { no: n, cards: s.plays.slice((n - 1) * 4, n * 4).map(({ seat, card }) => ({ seat, card })), winner: s.trickWinners[n - 1] };
+}
+
 // ---------- Visning for én spiller (skjuler andres kort) ----------
 
 export function view(s, seat) {
@@ -335,7 +346,7 @@ export function view(s, seat) {
   const showPartner = c && (c.acePlayed || s.phase === 'roundEnd');
   return {
     phase: s.phase, dealer: s.dealer, forehand: s.forehand, turn: s.turn,
-    hand: sortCards(s.hands[seat]),
+    hand: sortCards(s.hands[seat], !!c?.bid.nolo),
     handCounts: s.hands.map(h => h.length),
     legal: legalCards(s, seat),
     bidLog: s.bidLog.map(e => (e.pass
@@ -355,9 +366,10 @@ export function view(s, seat) {
     katCount: s.kat.length,
     trick: s.trick,
     lastTrick: s.lastTrick,
+    lastCompleted: lastCompleted(s),
     tricks: s.tricks,
     openHand: s.openHand && c.declarer !== seat
-      ? { seat: c.declarer, cards: sortCards(s.hands[c.declarer]) }
+      ? { seat: c.declarer, cards: sortCards(s.hands[c.declarer], true) }
       : null,
     result: s.result,
   };

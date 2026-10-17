@@ -83,6 +83,6 @@ export function rulesInfo() {
   const strip = ({ key, label, desc }) => ({ key, label, desc });
   return {
     suffixes: SUFFIXES.map(strip),
-    nolos: NOLOS.map(x => ({ ...strip(x), level: x.level, points: x.points })),
+    nolos: NOLOS.map(x => ({ ...strip(x), level: x.level, points: x.points, maxTricks: x.maxTricks })),
   };
 }

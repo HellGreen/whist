@@ -137,6 +137,7 @@ valgt følgende, som er bekræftet (alt kan justeres i `server/bids.js`, `server
 - **Jokere:** højeste trumfer, og den første joker i stikket vinder. En joker spillet ud kræver trumf. I spil uden
   trumf kan en joker altid spilles, men den vinder aldrig stikket.
 - **Katten:** man tager hele katten og lægger 3 kort, eller beholder sine kort.
+- **Esset i nolo:** i sol, ren sol, bordlægger og ren bordlægger tæller esset som 1 (laveste kort).
 - **Point:** vundet = grundpoint × (1 + overstik), tabt = grundpoint × manglende stik. Påhæng ×2. Vip'1/2/3 ×2/×4/×8
   (klør vendt ×2). Selvmakker (kaldt eget es) ×2. Esset i katten giver ingen fordobling. Med makker får eller betaler
   begge makkere pointene. Spiller man alene, betaler hver modspiller, og melderen får 3×.

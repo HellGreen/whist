@@ -348,3 +348,17 @@ table.rounds tr:not(.lost) td.result { color: var(--accent); }
   from { transform: translate(-50%, -50%) translate(var(--x), var(--y)) scale(1); opacity: 1; }
   to { transform: translate(-50%, -50%) translate(calc(var(--x) + var(--mx)), calc(var(--y) + var(--my))) scale(.35); opacity: .3; }
 }
+
+/* ---------- Se sidste stik ---------- */
+.pile.peek { cursor: pointer; }
+.pile.peek:hover .card { box-shadow: 0 0 0 3px var(--gold), 0 2px 5px rgba(0, 0, 0, .4); }
+.felt.show-last > :not(.last-trick) { filter: blur(3px) brightness(.8); }
+.last-trick { position: absolute; inset: 0; z-index: 20; cursor: pointer; }
+.last-card { position: absolute; }
+.last-card .card.classic { width: 90px; height: 126px; }
+.last-card.pos-bottom { bottom: 200px; left: 50%; transform: translateX(-50%); }
+.last-card.pos-top { top: 110px; left: 50%; transform: translateX(-50%); }
+.last-card.pos-left { left: 200px; top: 50%; transform: translateY(-50%); }
+.last-card.pos-right { right: 200px; top: 50%; transform: translateY(-50%); }
+.last-card.winner .card { box-shadow: 0 0 0 4px var(--gold), 0 10px 22px rgba(0, 0, 0, .5); }
+.last-caption { position: absolute; left: 50%; top: 33%; transform: translate(-50%, -50%); background: rgba(0, 0, 0, .6); color: #fff; padding: 8px 14px; border-radius: 8px; white-space: nowrap; }

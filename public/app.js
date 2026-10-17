@@ -51,7 +51,11 @@ const fmtSec = ms => (ms == null ? '–' : `${(ms / 1000).toLocaleString('da-DK'
 
 // Samme rækkefølge som på serveren: laveste kort først, jokerne yderst til højre.
 const SORT_ORDER = { S: 0, H: 1, C: 2, D: 3, J: 4 };
-const sortCards = cards => [...cards].sort((a, b) => SORT_ORDER[a[0]] - SORT_ORDER[b[0]] || +a.slice(1) - +b.slice(1));
+// aceLow: i nolo-spil vises esset først i hver kulør.
+const sortCards = (cards, aceLow = false) => {
+  const rank = c => (aceLow && c.slice(1) === '14' ? 1 : +c.slice(1));
+  return [...cards].sort((a, b) => SORT_ORDER[a[0]] - SORT_ORDER[b[0]] || rank(a) - rank(b));
+};
 
 // ---------- Forbindelse ----------
 
@@ -308,7 +312,16 @@ function contractCorner(c, tricks, animateKey) {
     line += ` ${trump} ${target}`;
   }
   let boxes = '';
-  if (!nolo) {
+  if (nolo) {
+    // Sol og bordlægger: ét tomt felt (melderen må tage ét stik). Ren sol og ren bordlægger: ingen.
+    // Melderens stik: grønt hvis det er tilladt, ellers rødt.
+    const def = state.rulesInfo.nolos.find(x => x.key === c.bid?.nolo || x.label === c.label);
+    const allowed = def?.maxTricks ?? 0, taken = tricks[c.declarer];
+    if (Math.max(allowed, taken)) {
+      boxes = `<div class="stik-boxes" title="${taken} stik – må højst tage ${allowed}">${Array.from({ length: Math.max(allowed, taken) },
+        (_, i) => `<span class="stik-box ${i < taken ? (i < allowed ? 'won' : 'lost') : ''}"></span>`).join('')}</div>`;
+    }
+  } else {
     const goal = c.bid?.n ?? parseInt(c.label, 10);
     const partner = c.partner != null && c.partner !== c.declarer ? tricks[c.partner] : 0;
     const won = tricks[c.declarer] + partner;
@@ -337,15 +350,18 @@ function gameScreen(t) {
   const anim = trickAnimation(t, g);
   // Vinderens stik tælles først med, når stikket er lagt i bunken.
   const tricks = g.tricks.map((n, seat) => (anim && anim.phase !== 'done' && anim.winner === seat ? n - 1 : n));
+  // Visningen af sidste stik lukker af sig selv, når et nyt stik er afgjort.
+  const showLast = g.lastCompleted && ui.lastTrick === g.lastCompleted.no && (!anim || anim.phase === 'done');
 
   return `<div class="game">
     <div class="table-area">
       <div class="felt-wrap">
-        <div class="felt">
+        <div class="felt ${showLast ? 'show-last' : ''}">
           ${[0, 1, 2, 3].map(seat => seatHtml(t, g, seat, rel(seat), tricks, anim)).join('')}
           ${g.contract ? contractCorner(g.contract, tricks, roundKey) : ''}
           <div class="center">${centerHtml(t, g, rel, anim)}</div>
           <div class="my-hand">${handHtml(g, me, anim)}</div>
+          ${showLast ? lastTrickOverlay(g, rel) : ''}
         </div>
       </div>
       <aside class="side">
@@ -370,9 +386,20 @@ function gameScreen(t) {
 const nameAt = seat => esc(state.table.seats[seat]?.name ?? '?');
 
 // Stikbunke: et kort med bagsiden op og antal stik ovenpå. Ligger ved siden af navneboksen.
-function trickPile(count, bump) {
+// Kun bunken med det seneste stik kan åbnes (peek), så man kan se, hvad der blev spillet.
+function trickPile(count, bump, peek) {
   if (!count) return '';
-  return `<div class="pile ${bump ? 'bump' : ''}" title="${count} stik">${backHtml(true)}<span>${count}</span></div>`;
+  const action = peek ? 'data-action="lastTrick" title="Se sidste stik"' : `title="${count} stik"`;
+  return `<div class="pile ${bump ? 'bump' : ''} ${peek ? 'peek' : ''}" ${action}>${backHtml(true)}<span>${count}</span></div>`;
+}
+
+// Det seneste stik vist foran hver spiller, mens resten af bordet er sløret. Et tryk lukker.
+function lastTrickOverlay(g, rel) {
+  const last = g.lastCompleted;
+  return `<div class="last-trick" data-action="lastTrick">
+    ${last.cards.map(p => `<div class="last-card pos-${rel(p.seat)} ${p.seat === last.winner ? 'winner' : ''}">${cardHtml(p.card)}</div>`).join('')}
+    <div class="last-caption">Stik ${last.no} – ${nameAt(last.winner)} tog stikket. Tryk for at lukke.</div>
+  </div>`;
 }
 
 function seatHtml(t, g, seat, pos, tricks, anim) {
@@ -381,7 +408,8 @@ function seatHtml(t, g, seat, pos, tricks, anim) {
   if (seat === g.dealer) tags.push('Giver');
   if (c?.declarer === seat) tags.push('Melder');
   if (c && c.partner === seat && c.partner !== c.declarer) tags.push('Makker');
-  const pile = g.phase === 'play' || g.phase === 'roundEnd' ? trickPile(tricks[seat], anim?.bump && anim.winner === seat) : '';
+  const peek = g.lastCompleted?.winner === seat && (!anim || anim.phase === 'done');
+  const pile = g.phase === 'play' || g.phase === 'roundEnd' ? trickPile(tricks[seat], anim?.bump && anim.winner === seat, peek) : '';
   const open = g.openHand?.seat === seat
     ? `<div class="open-hand">${g.openHand.cards.map(x => cardHtml(x, { small: true })).join('')}</div>` : '';
   return `<div class="seat-wrap pos-${pos}">
@@ -465,7 +493,6 @@ function resultBox(t, g) {
     <p>${nameAt(c.declarer)} meldte <b>${esc(c.label)}</b> ${who} og fik ${r.teamTricks} stik.</p>
     <table class="pts">${t.seats.map((p, i) => `<tr><td>${esc(p.name)}</td><td class="num ${r.points[i] < 0 ? 'neg' : ''}">${fmtPts(r.points[i])}</td></tr>`).join('')}</table>
     <p class="muted">Næste runde om <b data-countdown>${Math.ceil(t.nextRoundIn / 1000)}</b> sek.</p>
-    <button class="danger" data-action="stop">Stop spillet</button>
   </div>`;
 }
 
@@ -580,7 +607,7 @@ function handHtml(g, me, anim) {
   // Man kan ikke spille ud, mens det forrige stik bliver samlet ind.
   if (anim && anim.phase !== 'done') return g.hand.map(x => cardHtml(x)).join('');
   if (g.phase === 'exchange' && g.turn === me && c.tookKat) {
-    return sortCards(g.hand).map(x => cardHtml(x, { action: 'toggleDiscard', selected: ui.discard.includes(x), fromKat: c.fromKat.includes(x) })).join('');
+    return sortCards(g.hand, !!c.bid.nolo).map(x => cardHtml(x, { action: 'toggleDiscard', selected: ui.discard.includes(x), fromKat: c.fromKat.includes(x) })).join('');
   }
   if (g.phase === 'play' && g.turn === me) {
     return g.hand.map(x => cardHtml(x, { action: 'play', disabled: !g.legal.includes(x) })).join('');
@@ -805,7 +832,7 @@ function replayView(m) {
       && data.plays.slice(0, rs.count).some(p => p.card === c.ace)) tags.push('Makker');
     const hand = m.hidden.has(seat)
       ? backs(rs.hands[seat].length, true)
-      : sortCards(rs.hands[seat]).map(x => cardHtml(x, { small: true })).join('');
+      : sortCards(rs.hands[seat], c.nolo && !bidding).map(x => cardHtml(x, { small: true })).join('');
     return `<div class="seat pos-${rel(seat)} ${nextSeat === seat ? 'turn' : ''}">
       <div class="name">${esc(p.name)}${tags.map(x => `<span class="tag">${x}</span>`).join('')}</div>
       ${step > contractStep(data) ? `<div class="info">${rs.tricks[seat]} stik</div>` : ''}
@@ -903,7 +930,6 @@ const actions = {
   removeBot: d => socket.emit('table:removeBot', Number(d.seat)),
   save: () => confirm('Gem bordet og send alle tilbage til venterummet?') && socket.emit('table:save'),
   end: () => confirm('Afslut spillet for alle? Stillingen gemmes i historikken.') && socket.emit('table:end'),
-  stop: () => confirm('Stop spillet for alle? Stillingen gemmes i historikken.') && socket.emit('table:stop'),
   bid: d => socket.emit('game:bid', JSON.parse(d.bid)),
   pass: () => socket.emit('game:bid', null),
   pickTrump(d) {
@@ -934,6 +960,11 @@ const actions = {
   historyBack: d => showHistory(Number(d.id)),
   stats: showStats,
   closeModal: () => setModal(null),
+  lastTrick() {
+    const no = state.table?.game?.lastCompleted?.no;
+    ui.lastTrick = ui.lastTrick === no ? null : no;
+    render();
+  },
   replay: d => openReplay(Number(d.id), d.from),
   rpBack() {
     const from = modal.from ?? '';

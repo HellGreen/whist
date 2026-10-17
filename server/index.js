@@ -497,15 +497,6 @@ io.on('connection', socket => {
     closeTable();
   });
 
-  // Når scoren vises, kan alle ved bordet stoppe spillet i stedet for at gå videre.
-  on('table:stop', () => {
-    const id = atTable();
-    if (!inGame() || table.game?.phase !== 'roundEnd') throw new UserError('Spillet kan kun stoppes mellem runderne');
-    toastTable(`${nameOf(id)} stoppede spillet`);
-    db.endSession(table.sessionId);
-    closeTable();
-  });
-
   on('game:bid', game((g, seat, b) => G.bid(g, seat, b)));
   on('game:contract', game((g, seat, choice) => G.chooseContract(g, seat, choice)));
   on('game:halveTrump', game((g, seat, trump) => G.halveTrump(g, seat, trump)));

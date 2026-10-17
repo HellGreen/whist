@@ -23,9 +23,10 @@ export const PROFILES = {
 const ranksIn = (hand, suit) => hand.filter(c => !isJoker(c) && suitOf(c) === suit).map(rankOf).sort((a, b) => b - a);
 const jokersIn = hand => hand.filter(isJoker).length;
 const pick = list => list[Math.floor(Math.random() * list.length)];
-const lowest = cards => [...cards].sort((a, b) => cardValue(a) - cardValue(b))[0];
-const highest = cards => [...cards].sort((a, b) => cardValue(b) - cardValue(a))[0];
 const cardValue = c => (isJoker(c) ? 20 : rankOf(c));
+const noloValue = c => (isJoker(c) ? 20 : rankOf(c) === 14 ? 1 : rankOf(c)); // esset er 1 i nolo-spil
+const lowest = (cards, value = cardValue) => [...cards].sort((a, b) => value(a) - value(b))[0];
+const highest = (cards, value = cardValue) => [...cards].sort((a, b) => value(b) - value(a))[0];
 
 // ---------- Vurdering af hånden ----------
 
@@ -65,7 +66,7 @@ function bestTrump(hand, exclude = null) {
 export function noloDanger(hand) {
   let danger = 0;
   for (const suit of SUITS) {
-    const r = ranksIn(hand, suit).reverse(); // stigende
+    const r = ranksIn(hand, suit).map(x => (x === 14 ? 1 : x)).sort((a, b) => a - b); // stigende, esset er 1
     r.forEach((rank, i) => { if (rank > 3 + 2 * i) danger += rank > 9 + 2 * i ? 1 : 0.5; });
   }
   return Math.max(0, danger - 0.5 * jokersIn(hand));
@@ -122,7 +123,7 @@ function acceptVip(s, seat, p) {
 function chooseDiscards(s, seat) {
   const hand = s.hands[seat], c = s.contract;
   if (c.bid.nolo) {
-    return [...hand].sort((a, b) => cardValue(b) - cardValue(a)).filter(x => !isJoker(x)).slice(0, 3);
+    return [...hand].sort((a, b) => noloValue(b) - noloValue(a)).filter(x => !isJoker(x)).slice(0, 3);
   }
   const trump = trumpSuit(s);
   const keep = card => {
@@ -173,7 +174,7 @@ function isMaster(s, seat, card) {
 }
 
 function winsWith(s, seat, card) {
-  return trickWinnerOf([...s.trick, { seat, card }], trumpSuit(s)) === seat;
+  return trickWinnerOf([...s.trick, { seat, card }], trumpSuit(s), !!s.contract.bid.nolo) === seat;
 }
 
 function playCard(s, seat, p) {
@@ -226,28 +227,30 @@ function playTrump(s, seat, legal) {
 
 function playNolo(s, seat, legal) {
   const c = s.contract;
+  const low = cards => lowest(cards, noloValue);
+  const high = cards => highest(cards, noloValue);
   const losing = legal.filter(x => !winsWith(s, seat, x));
   if (seat === c.declarer) {
     const real = legal.filter(x => !isJoker(x));
-    if (!s.trick.length) return lowest(real.length ? real : legal); // jokerne gemmes til nødstilfælde
+    if (!s.trick.length) return low(real.length ? real : legal); // jokerne gemmes til nødstilfælde
     const led = ledSuitOf(s.trick, null);
     const following = legal.some(x => !isJoker(x) && suitOf(x) === led);
     const safe = losing.filter(x => !isJoker(x));
     if (following) {
-      if (safe.length) return highest(safe); // den højeste der stadig går under
+      if (safe.length) return high(safe); // den højeste der stadig går under
       const joker = legal.find(isJoker);
       if (joker) return joker;
-      return s.trick.length === 3 ? highest(legal) : lowest(legal);
+      return s.trick.length === 3 ? high(legal) : low(legal);
     }
-    return highest(safe.length ? safe : legal); // renonce: kom af med det farligste
+    return high(safe.length ? safe : legal); // renonce: kom af med det farligste
   }
   // Modspillere vil tvinge melderen til at tage stik.
-  if (!s.trick.length) return lowest(legal);
+  if (!s.trick.length) return low(legal);
   const declarerPlayed = s.trick.some(x => x.seat === c.declarer);
-  if (declarerPlayed && trickWinnerOf(s.trick, null) === c.declarer) {
-    return highest(losing.length ? losing : legal); // lad melderen beholde stikket
+  if (declarerPlayed && trickWinnerOf(s.trick, null, true) === c.declarer) {
+    return high(losing.length ? losing : legal); // lad melderen beholde stikket
   }
-  return lowest(legal);
+  return low(legal);
 }
 
 // ---------- Indgang ----------

@@ -184,3 +184,24 @@ test('melderunde: uden reglen "hold" skal man altid melde højere', () => {
   assert.throws(() => G.bid(s, 0, { n: 8, suffix: null }), /højere/);
   assert.ok(G.allowedBids(s, 0).every(b => !b.hold));
 });
+
+test('visning: i nolo-spil står esset først i hver kulør', () => {
+  assert.equal(G.sortCards(['S14', 'S2', 'H14', 'H9', 'J1']).join(' '), 'S2 S14 H9 H14 J1');
+  assert.equal(G.sortCards(['S14', 'S2', 'H14', 'H9', 'J1'], true).join(' '), 'S14 S2 H14 H9 J1');
+  const s = fixedRound(3);
+  playTo(s, 0, { nolo: 'sol' });
+  assert.equal(G.view(s, 0).hand[0], 'S14');
+});
+
+test('nolo: esset tæller som 1', () => {
+  const s = fixedRound(3); // plads 0 har alle spar
+  playTo(s, 0, { nolo: 'sol' });
+  G.exchange(s, 0, false);
+  s.hands[1].push('S5'); // plads 1 får en spar, så den skal bekende
+  G.play(s, 0, 'S14');
+  G.play(s, 1, 'S5');
+  G.play(s, 2, 'C2');
+  G.play(s, 3, 'D2');
+  assert.equal(s.lastTrick.winner, 1); // spar 5 slår esset
+  assert.equal(G.trickWinnerOf([{ seat: 0, card: 'S14' }, { seat: 1, card: 'S5' }], null), 0); // men ikke uden for nolo
+});
