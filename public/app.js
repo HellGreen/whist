@@ -134,28 +134,27 @@ function nameScreen() {
   </form></div>`;
 }
 
-function header() {
-  return `<header class="top">
-    <h1>♠ ♥ Es-makker whist ♣ ♦</h1>
-    <nav>
-      <button data-action="history">Historik</button>
-      <button data-action="stats">Statistik</button>
-      ${themeButton()}
-      <span class="me">${esc(state.me.name)}</span>
-      <button class="link" data-action="logout">skift navn</button>
-    </nav>
-  </header>`;
+// Titel midt på siden med de fire esser i en vifte til højre.
+function titleHtml() {
+  const aces = ['S14', 'H14', 'C14', 'D14'].map(c => `<img src="cards/classic/${c}.svg" alt="">`).join('');
+  return `<header class="title"><h1>Es-makker whist</h1><div class="title-cards">${aces}</div></header>`;
 }
 
 function lobbyScreen() {
   const t = state.table;
-  return `${header()}
+  return `${titleHtml()}
   <main class="lobby">
     <section class="box">
       <h2>Online (${state.online.length})</h2>
       <ul class="online">${state.online.map(p => `<li><span class="dot on"></span>${esc(p.name)}${p.atTable ? ' <span class="muted">· ved bordet</span>' : ''}</li>`).join('')}</ul>
     </section>
     <section class="box">${t ? tableBox(t) : noTableBox()}</section>
+    <section class="box menu">
+      <div class="me">${esc(state.me.name)} <button class="link" data-action="logout">skift navn</button></div>
+      <button data-action="history">Historik</button>
+      <button data-action="stats">Statistik</button>
+      ${themeButton()}
+    </section>
   </main>
   ${t?.status === 'countdown' ? `<div class="countdown">${t.countdown}</div>` : ''}`;
 }
@@ -676,7 +675,7 @@ function renderModal() {
   } else if (modal.type === 'history') {
     html = historyHtml(modal);
   }
-  el.innerHTML = `<div class="box"><button class="close" data-action="closeModal">Luk</button>${html}</div>`;
+  el.innerHTML = `<div class="box ${modal.wide ? 'wide' : ''}"><button class="close" data-action="closeModal">Luk</button>${html}</div>`;
   el.classList.remove('hidden');
 }
 
@@ -686,7 +685,7 @@ function setModal(next) {
   renderModal();
 }
 
-const showModal = html => setModal({ type: 'html', html });
+const showModal = (html, wide = false) => setModal({ type: 'html', html, wide });
 
 // Historik: spilleaftener efter dato og klokkeslæt; vælges én, vises dens runder nedenunder.
 async function showHistory(openId = null) {
@@ -748,20 +747,35 @@ async function showStats() {
   const s = await request('stats');
   if (!s) return;
   const pct = (won, played) => (played ? `${Math.round((100 * won) / played)} %` : '–');
+  // Gennemsnitligt antal stik over (+) eller under (−) målet; ikke for nolo-meldinger.
+  const diff = d => (d == null ? '–' : `${d > 0 ? '+' : d < 0 ? '−' : ''}${Math.abs(d).toLocaleString('da-DK', { maximumFractionDigits: 1 })}`);
+  const table = (head, rows, cols) => `<table class="grid"><thead><tr>${head}</tr></thead>
+    <tbody>${rows || `<tr><td colspan="${cols}" class="muted">Ingen data endnu.</td></tr>`}</tbody></table>`;
   showModal(`<h2>Statistik (all time)</h2>
-    <h3>Samlet</h3>
-    <table class="grid"><thead><tr><th>Spiller</th><th class="num">Aftener</th><th class="num">Runder</th><th class="num">Point</th></tr></thead>
-      <tbody>${s.totals.map(r => `<tr><td>${esc(r.name)}</td><td class="num">${r.sessions}</td><td class="num">${r.rounds}</td><td class="num">${fmtPts(r.points)}</td></tr>`).join('')}</tbody></table>
-    <h3>Som melder</h3>
-    <table class="grid"><thead><tr><th>Spiller</th><th>Melding</th><th class="num">Spillet</th><th class="num">Vundet</th><th class="num">Tabt</th><th class="num">Vundet %</th></tr></thead>
-      <tbody>${s.declarer.map(r => `<tr><td>${esc(r.name)}</td><td>${KIND_LABEL[r.kind] ?? esc(r.kind)}</td><td class="num">${r.played}</td><td class="num">${r.won}</td><td class="num">${r.played - r.won}</td><td class="num">${pct(r.won, r.played)}</td></tr>`).join('')}</tbody></table>
-    <h3>Melder og makker</h3>
-    <table class="grid"><thead><tr><th>Melder</th><th>Makker</th><th class="num">Spillet</th><th class="num">Vundet</th><th class="num">Vundet %</th></tr></thead>
-      <tbody>${s.pairs.map(r => `<tr><td>${esc(r.declarer)}</td><td>${esc(r.partner)}</td><td class="num">${r.played}</td><td class="num">${r.won}</td><td class="num">${pct(r.won, r.played)}</td></tr>`).join('')}</tbody></table>
-    <h3>Betænkningstid</h3>
-    <table class="grid"><thead><tr><th>Spiller</th><th class="num">Gns. pr. melding</th><th class="num">Gns. pr. kort</th><th class="num">Længste kort</th></tr></thead>
-      <tbody>${s.thinking.map(r => `<tr><td>${esc(r.name)}</td><td class="num">${fmtSec(r.bid_avg)}</td><td class="num">${fmtSec(r.play_avg)}</td><td class="num">${fmtSec(r.play_max)}</td></tr>`).join('')
-        || '<tr><td colspan="4" class="muted">Ingen data endnu.</td></tr>'}</tbody></table>`);
+    <div class="stats-grid">
+      <div class="stats-col">
+        <h3>Samlet</h3>
+        ${table('<th>Spiller</th><th class="num">Aftener</th><th class="num">Runder</th><th class="num">Point</th>',
+          s.totals.map(r => `<tr><td>${esc(r.name)}</td><td class="num">${r.sessions}</td><td class="num">${r.rounds}</td><td class="num">${fmtPts(r.points)}</td></tr>`).join(''), 4)}
+        <h3>Betænkningstid</h3>
+        ${table('<th>Spiller</th><th class="num">Gns. melding</th><th class="num">Gns. kort</th><th class="num">Længste kort</th>',
+          s.thinking.map(r => `<tr><td>${esc(r.name)}</td><td class="num">${fmtSec(r.bid_avg)}</td><td class="num">${fmtSec(r.play_avg)}</td><td class="num">${fmtSec(r.play_max)}</td></tr>`).join(''), 4)}
+        <h3>Melder og makker</h3>
+        ${table('<th>Melder</th><th>Makker</th><th class="num">Spillet</th><th class="num">Vundet</th><th class="num">Vundet %</th>',
+          s.pairs.map(r => `<tr><td>${esc(r.declarer)}</td><td>${esc(r.partner)}</td><td class="num">${r.played}</td><td class="num">${r.won}</td><td class="num">${pct(r.won, r.played)}</td></tr>`).join(''), 5)}
+      </div>
+      <div class="stats-col">
+        <h3>Som melder</h3>
+        ${table('<th>Spiller</th><th>Melding</th><th class="num">Spillet</th><th class="num">Vundet</th><th class="num">Tabt</th><th class="num">Vundet %</th><th class="num" title="Gennemsnitligt antal stik over eller under målet">Over/under</th>',
+          s.declarer.map(r => `<tr><td>${esc(r.name)}</td><td>${KIND_LABEL[r.kind] ?? esc(r.kind)}</td><td class="num">${r.played}</td><td class="num">${r.won}</td><td class="num">${r.played - r.won}</td><td class="num">${pct(r.won, r.played)}</td><td class="num">${diff(r.diff)}</td></tr>`).join(''), 7)}
+      </div>
+      <div class="stats-col">
+        <h3>Meldinger</h3>
+        <p class="muted">Alle meldinger der er spillet, og hvor ofte de er gået hjem.</p>
+        ${table('<th>Melding</th><th class="num">Meldt</th><th class="num">Gået hjem</th><th class="num">Sandsynlighed</th><th class="num" title="Gennemsnitligt antal stik over eller under målet">Over/under</th>',
+          s.bids.map(r => `<tr><td>${esc(r.label)}</td><td class="num">${r.played}</td><td class="num">${r.won}</td><td class="num">${pct(r.won, r.played)}</td><td class="num">${diff(r.diff)}</td></tr>`).join(''), 5)}
+      </div>
+    </div>`, true);
 }
 
 // ---------- Afspiller ----------

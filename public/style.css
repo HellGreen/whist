@@ -87,8 +87,21 @@ header.top button.link { color: #fff; }
 header.top .contract { font-size: 15px; }
 
 /* ---------- Venterum ---------- */
-.lobby { display: grid; grid-template-columns: 240px 1fr; gap: 16px; padding: 16px; max-width: 1100px; margin: 0 auto; }
-@media (max-width: 760px) { .lobby { grid-template-columns: 1fr; } }
+.lobby { display: grid; grid-template-columns: 240px 1fr 220px; gap: 16px; padding: 0 16px 16px; max-width: 1400px; margin: 0 auto; align-items: start; }
+@media (max-width: 900px) { .lobby { grid-template-columns: 1fr; } }
+.lobby .menu { display: flex; flex-direction: column; gap: 8px; }
+.lobby .menu .me { font-weight: 700; margin-bottom: 4px; }
+
+/* Stor titel midt på siden med fire esser i vifte. */
+.title { display: flex; justify-content: center; align-items: center; gap: 28px; padding: 28px 16px 22px; }
+.title h1 { margin: 0; font-size: clamp(36px, 5vw, 64px); letter-spacing: .5px; }
+.title-cards { display: flex; }
+.title-cards img { width: 58px; height: 81px; border-radius: 5px; background: #fff; box-shadow: 0 3px 8px rgba(0, 0, 0, .35); }
+.title-cards img + img { margin-left: -30px; }
+.title-cards img:nth-child(1) { transform: rotate(-12deg) translateY(6px); }
+.title-cards img:nth-child(2) { transform: rotate(-4deg); }
+.title-cards img:nth-child(3) { transform: rotate(4deg); }
+.title-cards img:nth-child(4) { transform: rotate(12deg) translateY(6px); }
 .box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
 .box h2 { margin-top: 0; font-size: 18px; }
 .online, .seats, .saved { list-style: none; margin: 0; padding: 0; }
@@ -363,3 +376,12 @@ table.rounds tr:not(.lost) td.result { color: var(--accent); }
   background: var(--panel); color: var(--ink); border-radius: 10px; padding: 10px 18px 12px; text-align: center; box-shadow: 0 6px 20px rgba(0, 0, 0, .5); }
 .table-choice p { margin: 4px 0 8px; }
 .table-choice .row { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin: 6px 0; align-items: center; }
+
+/* ---------- Bred modal (statistik): tre kolonner, så det kan være på en 1920×1080-skærm ---------- */
+.modal .box.wide { max-width: 1800px; }
+.stats-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; align-items: start; }
+.stats-col h3 { margin: 4px 0 6px; }
+.stats-col h3:not(:first-child) { margin-top: 18px; }
+.stats-col table.grid { width: 100%; font-size: 14px; }
+.stats-col p { margin: 0 0 6px; font-size: 14px; }
+@media (max-width: 1200px) { .stats-grid { grid-template-columns: 1fr; } }

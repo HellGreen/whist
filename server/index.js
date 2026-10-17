@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { Server } from 'socket.io';
 import * as AI from './ai.js';
-import { defaultRules, rulesInfo, sanitizeRules } from './bids.js';
+import { bidRank, defaultRules, NOLOS, rulesInfo, sanitizeRules } from './bids.js';
 import { openDb } from './db.js';
 import { UserError } from './errors.js';
 import * as G from './game.js';
@@ -512,7 +512,13 @@ io.on('connection', socket => {
     if (!replay) throw new UserError('Runden kan ikke afspilles');
     return replay;
   });
-  on('stats', () => db.stats());
+  on('stats', () => {
+    const stats = db.stats();
+    const rank = r => bidRank(NOLOS.some(x => x.key === r.kind)
+      ? { nolo: r.kind } : { n: r.level, suffix: r.kind === 'plain' ? null : r.kind });
+    stats.bids.sort((a, b) => rank(a) - rank(b));
+    return stats;
+  });
 
   socket.on('disconnect', () => {
     detach(socket);

@@ -273,9 +273,15 @@ export function openDb(file) {
           FROM round_scores rs JOIN rounds r ON r.id = rs.round_id JOIN players p ON p.id = rs.player_id
           GROUP BY p.id ORDER BY points DESC`).all(),
         declarer: q(`
-          SELECT p.name, r.bid_kind AS kind, COUNT(*) AS played, SUM(r.won) AS won
+          SELECT p.name, r.bid_kind AS kind, COUNT(*) AS played, SUM(r.won) AS won,
+            AVG(CASE WHEN r.bid_level IS NOT NULL THEN r.team_tricks - r.bid_level END) AS diff
           FROM rounds r JOIN players p ON p.id = r.declarer_id
           GROUP BY p.id, r.bid_kind ORDER BY p.name, played DESC`).all(),
+        // Hver melding (fx "8 gode", "Sol"); sorteres efter rangorden i server/index.js.
+        bids: q(`
+          SELECT r.bid_label AS label, r.bid_kind AS kind, r.bid_level AS level, COUNT(*) AS played, SUM(r.won) AS won,
+            AVG(CASE WHEN r.bid_level IS NOT NULL THEN r.team_tricks - r.bid_level END) AS diff
+          FROM rounds r GROUP BY r.bid_label`).all(),
         pairs: q(`
           SELECT d.name AS declarer, m.name AS partner, COUNT(*) AS played, SUM(r.won) AS won
           FROM rounds r JOIN players d ON d.id = r.declarer_id JOIN players m ON m.id = r.partner_id
