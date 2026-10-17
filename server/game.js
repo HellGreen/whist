@@ -37,12 +37,16 @@ export function sortCards(cards) {
 
 export function newRound(dealer, rules, deck = shuffle(makeDeck())) {
   const forehand = (dealer + 1) % 4;
+  const hands = [0, 1, 2, 3].map(i => deck.slice(i * 13, i * 13 + 13));
   return {
     rules, dealer, forehand,
     phase: 'bidding', // bidding | passed | contract | halveTrump | vip | exchange | play | roundEnd
     turn: forehand,
-    hands: [0, 1, 2, 3].map(i => deck.slice(i * 13, i * 13 + 13)),
+    hands,
     kat: deck.slice(52),
+    dealt: { hands: hands.map(h => [...h]), kat: deck.slice(52) }, // til afspilning
+    plays: [], // { seat, card } i spillet rækkefølge
+    trickWinners: [],
     discards: [],
     bidLog: [],
     passed: [false, false, false, false],
@@ -223,20 +227,20 @@ function startPlay(s) {
 
 // ---------- Stikspil ----------
 
-const trumpSuit = s => (s.contract.trump === 'NT' ? null : s.contract.trump);
+export const trumpSuit = s => (s.contract.trump === 'NT' ? null : s.contract.trump);
 
 // Jokere er de højeste trumfer. I spil uden trumf er en joker "fri" og vinder aldrig.
 const effectiveSuit = (s, card) => (isJoker(card) ? trumpSuit(s) : suitOf(card));
 
-function ledSuit(s) {
-  if (!s.trick.length) return null;
-  const first = s.trick[0].card;
+export function ledSuitOf(trick, trump) {
+  if (!trick.length) return null;
+  const first = trick[0].card;
   if (!isJoker(first)) return suitOf(first);
-  const trump = trumpSuit(s);
   if (trump) return trump;
-  const firstReal = s.trick.find(p => !isJoker(p.card));
+  const firstReal = trick.find(p => !isJoker(p.card));
   return firstReal ? suitOf(firstReal.card) : null;
 }
+const ledSuit = s => ledSuitOf(s.trick, trumpSuit(s));
 
 export function legalCards(s, seat) {
   if (s.phase !== 'play' || s.turn !== seat) return [];
@@ -251,18 +255,20 @@ export function legalCards(s, seat) {
   return trumpSuit(s) ? follow : [...follow, ...hand.filter(isJoker)];
 }
 
-function trickWinner(s) {
+// Vinderen af et (evt. ufærdigt) stik, eller null hvis intet kort kan vinde endnu.
+export function trickWinnerOf(trick, trump) {
   const highest = plays => plays.reduce((a, b) => (rankOf(b.card) > rankOf(a.card) ? b : a));
-  const trump = trumpSuit(s);
   if (trump) {
-    const joker = s.trick.find(p => isJoker(p.card)); // første joker vinder
+    const joker = trick.find(p => isJoker(p.card)); // første joker vinder
     if (joker) return joker.seat;
-    const trumps = s.trick.filter(p => suitOf(p.card) === trump);
+    const trumps = trick.filter(p => suitOf(p.card) === trump);
     if (trumps.length) return highest(trumps).seat;
   }
-  const led = ledSuit(s);
-  return highest(s.trick.filter(p => !isJoker(p.card) && suitOf(p.card) === led)).seat;
+  const led = ledSuitOf(trick, trump);
+  const following = trick.filter(p => !isJoker(p.card) && suitOf(p.card) === led);
+  return following.length ? highest(following).seat : null;
 }
+const trickWinner = s => trickWinnerOf(s.trick, trumpSuit(s));
 
 export function play(s, seat, card) {
   expectTurn(s, seat, 'play');
@@ -271,6 +277,7 @@ export function play(s, seat, card) {
   s.hands[seat] = s.hands[seat].filter(x => x !== card);
   if (!s.trick.length) s.lastTrick = null;
   s.trick.push({ seat, card });
+  (s.plays ??= []).push({ seat, card });
   if (c.bid.nolo && noloDef(c.bid.nolo).open) s.openHand = true;
   if (card === c.ace) c.partnerRevealed = true;
   if (s.trick.length < 4) {
@@ -279,6 +286,7 @@ export function play(s, seat, card) {
   }
   const winner = trickWinner(s);
   s.tricks[winner]++;
+  (s.trickWinners ??= []).push(winner);
   s.lastTrick = { cards: s.trick, winner };
   s.trick = [];
   s.turn = winner;
@@ -288,6 +296,31 @@ export function play(s, seat, card) {
     s.phase = 'roundEnd';
     s.turn = null;
   }
+}
+
+// ---------- Afspilning ----------
+
+// Alt der skal til for at afspille en færdig runde kort for kort.
+export function replayOf(s) {
+  if (!s.dealt) return null; // runde startet før afspilning fandtes
+  const c = s.contract;
+  return {
+    dealer: s.dealer,
+    forehand: s.forehand,
+    dealt: s.dealt,
+    bidLog: s.bidLog.map(e => (e.pass
+      ? { seat: e.seat, pass: true, ms: e.ms }
+      : { seat: e.seat, hold: e.hold, label: bidLabel(e.bid), ms: e.ms })),
+    decisions: s.decisions ?? [], // betænkningstid for trumf/es, vip og kat
+    contract: {
+      declarer: c.declarer, label: c.label, nolo: !!c.bid.nolo, trump: c.trump, ace: c.ace, partner: c.partner,
+      selfCall: c.selfCall, katPartner: c.katPartner, vipCards: c.vipCards,
+      exchanger: c.exchanger, tookKat: c.tookKat, discards: c.tookKat ? s.discards : [],
+    },
+    plays: s.plays,
+    trickWinners: s.trickWinners,
+    result: s.result,
+  };
 }
 
 // ---------- Visning for én spiller (skjuler andres kort) ----------

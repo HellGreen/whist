@@ -128,3 +128,49 @@ test('point: tabt melding', () => {
   assert.equal(r.won, false);
   assert.deepEqual(r.points, [-4, -4, 4, 4]);
 });
+
+test('afspilning: uddelte kort, kat og alle spillede kort gemmes', () => {
+  const s = fixedRound(3);
+  playTo(s, 0, { n: 7, suffix: null }, { trump: 'S', ace: 'H14' });
+  G.exchange(s, 0, true);
+  G.discard(s, 0, ['S2', 'S3', 'S4']);
+  while (s.phase === 'play') G.play(s, s.turn, G.legalCards(s, s.turn)[0]);
+  const r = G.replayOf(s);
+  assert.equal(r.dealt.hands[0].length, 13);
+  assert.deepEqual(r.dealt.kat, ['J1', 'J2', 'J3']);
+  assert.deepEqual(r.contract.discards, ['S2', 'S3', 'S4']);
+  assert.equal(r.plays.length, 52);
+  assert.equal(r.trickWinners.length, 13);
+  assert.equal(r.result.won, true);
+});
+
+test('AI: fire AI-spillere kan spille mange runder uden fejl', async () => {
+  const { decide, PROFILES } = await import('../server/ai.js');
+  const profiles = Object.keys(PROFILES);
+  const rulesAll = { bids: Object.fromEntries(Object.keys(rules.bids).map(k => [k, true])) };
+  const kinds = {};
+  let played = 0;
+  for (let i = 0; i < 400; i++) {
+    const s = G.newRound(i % 4, i % 2 ? rules : rulesAll);
+    for (let guard = 0; guard < 200 && !['passed', 'roundEnd'].includes(s.phase); guard++) {
+      const seat = s.turn;
+      const d = decide(s, seat, profiles[seat % 3]);
+      if (d.type === 'bid') G.bid(s, seat, d.bid);
+      else if (d.type === 'contract') G.chooseContract(s, seat, d);
+      else if (d.type === 'halveTrump') G.halveTrump(s, seat, d.trump);
+      else if (d.type === 'vip') G.vip(s, seat, d.accept);
+      else if (d.type === 'exchange') G.exchange(s, seat, d.take);
+      else if (d.type === 'discard') G.discard(s, seat, d.cards);
+      else if (d.type === 'play') G.play(s, seat, d.card);
+    }
+    assert.ok(['passed', 'roundEnd'].includes(s.phase), `runde ${i} gik i stå i ${s.phase}`);
+    if (s.phase === 'roundEnd') {
+      played++;
+      const k = s.contract.label.replace(/^\d+ ?/, '') || 'almindelig';
+      kinds[k] ??= [0, 0];
+      kinds[k][s.result.won ? 0 : 1]++;
+    }
+  }
+  console.log('AI-runder spillet:', played, 'af 400 · [vundet, tabt] pr. meldingstype:', JSON.stringify(kinds));
+  assert.ok(played > 100);
+});
