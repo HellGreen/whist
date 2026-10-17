@@ -1,10 +1,12 @@
-// Simulerer fire spillere mod en kørende server: node tools/simulate.js [url] [runder]
-// Spillerne vælger tilfældige lovlige handlinger og spiller det angivne antal runder.
+// Simulerer spillere mod en kørende server: node tools/simulate.js [url] [runder] [ai]
+// Uden "ai" forbinder fire spillere, der vælger tilfældige lovlige handlinger.
+// Med "ai" forbinder én spiller, som fylder bordet op med tre AI-spillere.
 import { io } from 'socket.io-client';
 
 const URL = process.argv[2] ?? 'http://localhost:3000';
 const ROUNDS = Number(process.argv[3] ?? 3);
-const NAMES = ['Sim Anna', 'Sim Bo', 'Sim Carl', 'Sim Dina'];
+const WITH_AI = process.argv[4] === 'ai';
+const NAMES = WITH_AI ? ['Sim Anna'] : ['Sim Anna', 'Sim Bo', 'Sim Carl', 'Sim Dina'];
 const pick = a => a[Math.floor(Math.random() * a.length)];
 
 const bots = NAMES.map(name => {
@@ -28,7 +30,8 @@ function act(bot) {
     return;
   }
   if (!t.game) {
-    if (t.mySeat < 0) socket.emit('table:join');
+    if (WITH_AI && t.mySeat >= 0 && t.seats.includes(null)) socket.emit('table:addBot', ['safe', 'normal', 'risky'][t.seats.indexOf(null) - 1]);
+    else if (t.mySeat < 0) socket.emit('table:join');
     else if (!t.seats[t.mySeat].ready && t.status === 'waiting') socket.emit('table:ready', true);
     return;
   }
@@ -46,10 +49,6 @@ function act(bot) {
   if (lastKey.get(bot) === key) return;
   lastKey.set(bot, key);
 
-  if (g.phase === 'roundEnd') {
-    if (!t.nextReady[me]) socket.emit('game:next');
-    return;
-  }
   if (g.turn !== me) return;
   const c = g.contract;
   switch (g.phase) {
@@ -79,4 +78,4 @@ function act(bot) {
   }
 }
 
-setTimeout(() => { console.error('Timeout – simuleringen gik i stå'); for (const b of bots) console.error(b.name, JSON.stringify(b.state?.table?.game?.phase), b.state?.table?.status); process.exit(1); }, 30_000);
+setTimeout(() => { console.error('Timeout – simuleringen gik i stå'); for (const b of bots) console.error(b.name, JSON.stringify(b.state?.table?.game?.phase), b.state?.table?.status); process.exit(1); }, 60_000 + ROUNDS * 15_000);

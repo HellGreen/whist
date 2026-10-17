@@ -84,8 +84,17 @@ table.grid tfoot td { font-weight: 700; }
 .countdown { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, .55); color: #fff; font-size: 30vmin; font-weight: 800; z-index: 50; }
 
 /* ---------- Spillet ---------- */
-.game { display: grid; grid-template-rows: auto minmax(300px, 1fr) auto auto; height: 100vh; }
-.felt-wrap { display: flex; justify-content: center; align-items: center; min-height: 0; padding: 10px; background: #2b2118; }
+.game { display: grid; grid-template-rows: auto minmax(300px, 1fr) auto; height: 100vh; }
+.table-area { display: flex; min-height: 0; background: #2b2118; }
+.felt-wrap { flex: 1; display: flex; justify-content: center; align-items: center; min-height: 0; min-width: 0; padding: 10px; }
+.side { width: 380px; flex: none; display: flex; flex-direction: column; gap: 10px; padding: 10px 10px 10px 0; overflow-y: auto; }
+.side .panel { border-radius: 8px; border-top: none; }
+@media (max-width: 900px) {
+  .game { height: auto; min-height: 100vh; }
+  .table-area { flex-direction: column; }
+  .felt-wrap { height: min(100vw, 70vh); }
+  .side { width: auto; padding: 0 10px 10px; }
+}
 .felt {
   position: relative;
   height: 100%;
@@ -126,13 +135,14 @@ table.grid tfoot td { font-weight: 700; }
 .chip { background: #ece6d8; border-radius: 12px; padding: 2px 10px; font-size: 14px; }
 .bidgrid { display: inline-grid; gap: 4px; }
 .bidgrid .bidrow { display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; }
-.bidgrid button { min-width: 64px; padding: 4px 8px; }
+.bidgrid button { min-width: 54px; padding: 4px 6px; }
 .suit-btn { font-size: 20px; min-width: 52px; }
 .suit-btn.red { color: var(--red); }
 .suit-btn.selected { color: #fff; }
 
 .hand { display: flex; justify-content: center; padding: 14px 16px 18px; background: var(--panel); overflow-x: auto; }
-.hand .card + .card { margin-left: -18px; }
+.hand { gap: 4px; }
+@media (max-width: 1000px) { .hand { gap: 0; } .hand .card + .card { margin-left: -18px; } }
 
 /* ---------- Kort ---------- */
 .card {
@@ -170,3 +180,70 @@ button.card:disabled { opacity: 1; filter: brightness(.7); }
 .modal .close { position: absolute; top: 10px; right: 10px; }
 #toasts { position: fixed; bottom: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 70; }
 .toast { background: #222; color: #fff; padding: 10px 14px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, .3); max-width: 320px; }
+
+/* ---------- Afspiller ---------- */
+.modal .box.replay { max-width: 1000px; }
+.rp-info { text-align: center; }
+.rp-felt { width: min(100%, 62vh); height: auto; margin: 0 auto; }
+.rp-felt .seat { padding: 4px 6px; min-width: 0; }
+.rp-hand { display: flex; flex-wrap: wrap; justify-content: center; max-width: 320px; row-gap: 2px; }
+.rp-hand .card + .card { margin-left: -12px; }
+.rp-felt .seat.pos-left .rp-hand, .rp-felt .seat.pos-right .rp-hand { max-width: 140px; }
+.rp-caption { text-align: center; min-height: 1.4em; font-size: 17px; }
+.rp-controls { text-align: center; border-top: 1px solid var(--line); padding-top: 8px; }
+.rp-controls .row { display: flex; gap: 6px; justify-content: center; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+.rp-controls input[type=range] { width: min(100%, 600px); }
+.rp-speeds { margin-left: 12px; display: inline-flex; gap: 4px; }
+.rp-controls label { margin: 0 6px; }
+
+/* ---------- Meldinger, hjørne, stikpanel og score ---------- */
+.felt-wrap { gap: 12px; }
+.bubble { position: absolute; background: #fff; color: var(--ink); padding: 6px 14px; border-radius: 16px; font-weight: 700; font-size: 18px; box-shadow: 0 3px 8px rgba(0, 0, 0, .35); white-space: nowrap; animation: pop .25s ease-out; }
+.bubble.pass { background: #e4ded2; color: var(--muted); font-weight: 500; }
+.bubble.thinking { background: rgba(255, 255, 255, .55); }
+.bubble.pos-bottom { bottom: 0; left: 50%; transform: translateX(-50%); }
+.bubble.pos-top { top: 0; left: 50%; transform: translateX(-50%); }
+.bubble.pos-left { left: 0; top: 50%; transform: translateY(-50%); }
+.bubble.pos-right { right: 0; top: 50%; transform: translateY(-50%); }
+@keyframes pop { from { opacity: 0; scale: .6; } to { opacity: 1; scale: 1; } }
+
+.contract-corner { position: absolute; top: 8px; left: 8px; background: rgba(0, 0, 0, .35); border: 1px solid rgba(255, 255, 255, .25); border-radius: 8px; padding: 6px 10px; font-size: 13px; line-height: 1.45; max-width: 30%; }
+.contract-corner .big { font-size: 20px; font-weight: 800; color: var(--gold); }
+.contract-corner.enter { animation: to-corner .9s ease-in-out; }
+@keyframes to-corner {
+  from { transform: translate(var(--from-x, 120%), var(--from-y, 160%)) scale(1.6); opacity: .3; }
+  to { transform: none; opacity: 1; }
+}
+
+.trick-panel { background: var(--panel); color: var(--ink); border-radius: 8px; padding: 8px 10px; max-height: 100%; overflow: auto; font-size: 13px; }
+.trick-panel:empty { display: none; }
+.trick-panel h4 { margin: 0 0 6px; }
+.trick-panel table { width: 100%; border-collapse: collapse; text-align: center; }
+.trick-panel th, .trick-panel td { padding: 2px 3px; border-bottom: 1px solid var(--line); }
+.trick-panel th { font-weight: 600; font-size: 11px; }
+.trick-panel tfoot td { font-weight: 800; border-bottom: none; }
+.trick-panel p { margin: 6px 0 0; }
+
+.result-box { position: absolute; inset: -4%; background: var(--panel); color: var(--ink); border-radius: 12px; padding: 12px 16px; text-align: center; box-shadow: 0 8px 30px rgba(0, 0, 0, .5); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; animation: pop .3s ease-out; }
+.result-box h3 { margin: 0; }
+.result-box p { margin: 2px 0; }
+.result-box table.pts td { padding: 2px 10px; font-size: 17px; }
+.result-box td.num { text-align: right; font-weight: 700; color: var(--accent); }
+.result-box td.num.neg { color: var(--danger); }
+
+/* ---------- Venterum: AI ---------- */
+.bot { margin-right: 6px; }
+.seats li .link { margin-left: 8px; }
+.add-bots { margin: 8px 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.add-bots ul { flex-basis: 100%; margin: 4px 0 0; padding-left: 18px; font-size: 14px; }
+
+/* ---------- Historik ---------- */
+.sessions { list-style: none; padding: 0; margin: 0; }
+.sessions > li { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
+.sessions > li.open { border-color: var(--accent); }
+.session-head { display: flex; flex-wrap: wrap; gap: 4px 16px; width: 100%; text-align: left; border: none; border-radius: 0; padding: 10px 12px; }
+.session-head .when { min-width: 260px; }
+.session-body { padding: 4px 12px 12px; }
+table.rounds td.result { font-size: 18px; }
+table.rounds tr:not(.lost) td.result { color: var(--accent); }
+.play-btn { padding: 2px 10px; border-radius: 50%; }

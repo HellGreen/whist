@@ -51,13 +51,55 @@ CREATE TABLE IF NOT EXISTS round_scores (
   PRIMARY KEY (round_id, player_id)
 );
 CREATE INDEX IF NOT EXISTS rounds_session ON rounds(session_id);
+-- De 13 kort hver spiller fik (før byttet med katten), mellemrumsadskilt, fx "S14 H2 J1".
+CREATE TABLE IF NOT EXISTS round_hands (
+  round_id INTEGER NOT NULL REFERENCES rounds(id),
+  seat INTEGER NOT NULL,
+  player_id INTEGER NOT NULL REFERENCES players(id),
+  cards TEXT NOT NULL,
+  PRIMARY KEY (round_id, seat)
+);
+-- Hvert spillet kort i rækkefølge.
+CREATE TABLE IF NOT EXISTS round_plays (
+  round_id INTEGER NOT NULL REFERENCES rounds(id),
+  seq INTEGER NOT NULL, -- 0-51
+  trick_no INTEGER NOT NULL, -- 1-13
+  seat INTEGER NOT NULL,
+  player_id INTEGER NOT NULL REFERENCES players(id),
+  card TEXT NOT NULL,
+  won_trick INTEGER NOT NULL, -- 1 hvis kortet vandt stikket
+  think_ms INTEGER, -- betænkningstid: fra turen begyndte, til kortet blev spillet
+  PRIMARY KEY (round_id, seq)
+);
+-- Hvert bud i melderunden.
+CREATE TABLE IF NOT EXISTS round_bids (
+  round_id INTEGER NOT NULL REFERENCES rounds(id),
+  seq INTEGER NOT NULL,
+  seat INTEGER NOT NULL,
+  player_id INTEGER NOT NULL REFERENCES players(id),
+  bid_label TEXT, -- NULL = pas
+  hold INTEGER NOT NULL DEFAULT 0,
+  think_ms INTEGER,
+  PRIMARY KEY (round_id, seq)
+);
 `;
+
+// Kolonner tilføjet efter første version.
+const MIGRATIONS = [
+  ['rounds', 'replay', 'TEXT'], // fuldt forløb (kort, meldinger, kat, stik) som JSON til afspilleren
+  ['round_plays', 'think_ms', 'INTEGER'],
+  ['players', 'bot_profile', 'TEXT'], // NULL = menneske, ellers AI-profil (safe | normal | risky)
+];
 
 export function openDb(file) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
   db.exec(SCHEMA);
+  for (const [tableName, column, type] of MIGRATIONS) {
+    const exists = db.prepare(`PRAGMA table_info(${tableName})`).all().some(c => c.name === column);
+    if (!exists) db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${column} ${type}`);
+  }
 
   const q = sql => db.prepare(sql);
   const tx = fn => {
@@ -88,6 +130,17 @@ export function openDb(file) {
         INSERT INTO players (name, last_seen) VALUES (?, datetime('now'))
         ON CONFLICT(name) DO UPDATE SET last_seen = excluded.last_seen
         RETURNING id, name`).get(name);
+    },
+
+    upsertBot(name, profile) {
+      return q(`
+        INSERT INTO players (name, bot_profile, last_seen) VALUES (?, ?, datetime('now'))
+        ON CONFLICT(name) DO UPDATE SET bot_profile = excluded.bot_profile, last_seen = excluded.last_seen
+        RETURNING id, name`).get(name, profile);
+    },
+
+    botProfile(id) {
+      return q('SELECT bot_profile FROM players WHERE id = ?').get(id)?.bot_profile ?? null;
     },
 
     playerName(id) {
@@ -141,13 +194,34 @@ export function openDb(file) {
       tx(() => {
         const { lastInsertRowid } = q(`
           INSERT INTO rounds (session_id, round_no, dealer_id, declarer_id, partner_id, solo, bid_kind,
-            bid_level, bid_label, trump, called_ace, self_call, vip_flips, team_tricks, won)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+            bid_level, bid_label, trump, called_ace, self_call, vip_flips, team_tricks, won, replay)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
           r.sessionId, r.roundNo, r.dealerId, r.declarerId, r.partnerId, r.solo ? 1 : 0, r.bidKind,
-          r.bidLevel, r.bidLabel, r.trump, r.calledAce, r.selfCall ? 1 : 0, r.vipFlips, r.teamTricks, r.won ? 1 : 0);
+          r.bidLevel, r.bidLabel, r.trump, r.calledAce, r.selfCall ? 1 : 0, r.vipFlips, r.teamTricks, r.won ? 1 : 0,
+          r.replay ? JSON.stringify(r.replay) : null);
         const insert = q('INSERT INTO round_scores (round_id, player_id, points) VALUES (?, ?, ?)');
         for (const s of r.scores) insert.run(lastInsertRowid, s.playerId, s.points);
+        if (!r.replay) return;
+        const hand = q('INSERT INTO round_hands (round_id, seat, player_id, cards) VALUES (?, ?, ?, ?)');
+        r.replay.dealt.hands.forEach((cards, seat) => hand.run(lastInsertRowid, seat, r.seatIds[seat], cards.join(' ')));
+        const play = q(`INSERT INTO round_plays (round_id, seq, trick_no, seat, player_id, card, won_trick, think_ms)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+        r.replay.plays.forEach(({ seat, card, ms }, seq) => {
+          const trick = Math.floor(seq / 4);
+          play.run(lastInsertRowid, seq, trick + 1, seat, r.seatIds[seat], card,
+            r.replay.trickWinners[trick] === seat ? 1 : 0, ms ?? null);
+        });
+        const bid = q(`INSERT INTO round_bids (round_id, seq, seat, player_id, bid_label, hold, think_ms)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`);
+        r.replay.bidLog.forEach((b, seq) => bid.run(lastInsertRowid, seq, b.seat, r.seatIds[b.seat],
+          b.pass ? null : b.label, b.hold ? 1 : 0, b.ms ?? null));
       });
+    },
+
+    roundReplay(roundId) {
+      const r = q('SELECT session_id, round_no, replay FROM rounds WHERE id = ?').get(roundId);
+      if (!r?.replay) return null;
+      return { roundNo: r.round_no, players: sessionPlayers(r.session_id), ...JSON.parse(r.replay) };
     },
 
     sessionRounds(id) {
@@ -162,6 +236,8 @@ export function openDb(file) {
         JOIN players d ON d.id = r.declarer_id
         LEFT JOIN players m ON m.id = r.partner_id
         WHERE r.session_id = ? ORDER BY r.round_no`).all(id).map(r => ({
+        id: r.id,
+        hasReplay: r.replay != null,
         roundNo: r.round_no,
         playedAt: r.played_at,
         bidLabel: r.bid_label,
@@ -204,6 +280,15 @@ export function openDb(file) {
           SELECT d.name AS declarer, m.name AS partner, COUNT(*) AS played, SUM(r.won) AS won
           FROM rounds r JOIN players d ON d.id = r.declarer_id JOIN players m ON m.id = r.partner_id
           WHERE r.solo = 0 GROUP BY d.id, m.id ORDER BY played DESC`).all(),
+        thinking: q(`
+          SELECT p.name,
+            (SELECT AVG(think_ms) FROM round_bids b WHERE b.player_id = p.id) AS bid_avg,
+            (SELECT COUNT(think_ms) FROM round_bids b WHERE b.player_id = p.id) AS bids,
+            (SELECT AVG(think_ms) FROM round_plays x WHERE x.player_id = p.id) AS play_avg,
+            (SELECT MAX(think_ms) FROM round_plays x WHERE x.player_id = p.id) AS play_max,
+            (SELECT COUNT(think_ms) FROM round_plays x WHERE x.player_id = p.id) AS plays
+          FROM players p WHERE p.bot_profile IS NULL
+          ORDER BY p.name`).all().filter(r => r.bids || r.plays),
       };
     },
   };

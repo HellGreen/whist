@@ -1,10 +1,11 @@
-// Webserver: venterum, ét bord, nedtælling, spil, pause/gem og historik.
+// Webserver: venterum, ét bord, nedtælling, spil, AI-spillere, pause/gem og historik.
 import { randomInt } from 'node:crypto';
 import { createServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { Server } from 'socket.io';
+import * as AI from './ai.js';
 import { defaultRules, rulesInfo, sanitizeRules } from './bids.js';
 import { openDb } from './db.js';
 import { UserError } from './errors.js';
@@ -13,7 +14,14 @@ import * as G from './game.js';
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 3000;
 const LEAVE_GRACE_MS = 15_000; // så et genindlæst faneblad ikke mister pladsen ved bordet
-const RULES_INFO = rulesInfo();
+// WHIST_DELAY_FACTOR < 1 gør alle ventetider kortere (bruges til test).
+const DELAY = Number(process.env.WHIST_DELAY_FACTOR ?? 1);
+const RESULT_DELAY_MS = 2_500 * DELAY; // pause efter sidste kort, før scoren vises
+const RESULT_SHOW_MS = 8_000 * DELAY; // så længe scoren vises, før næste runde starter
+const RULES_INFO = {
+  ...rulesInfo(),
+  aiProfiles: Object.values(AI.PROFILES).map(({ key, label, desc }) => ({ key, label, desc })),
+};
 
 const db = openDb(process.env.WHIST_DB || path.join(ROOT, 'data', 'whist.db'));
 db.recoverSessions();
@@ -23,18 +31,22 @@ app.use(express.static(path.join(ROOT, 'public')));
 const server = createServer(app);
 const io = new Server(server);
 
-/** Kendte spillere: id -> { id, name, sockets: Set, leaveTimer } */
+/** Kendte menneskelige spillere: id -> { id, name, sockets: Set, leaveTimer } */
 const players = new Map();
+/** AI-spillere: id -> profilnøgle */
+const bots = new Map();
 /** Det ene bord, eller null. */
 let table = null;
+let botTimer = null;
 
-const isOnline = id => (players.get(id)?.sockets.size ?? 0) > 0;
+const isBot = id => bots.has(id);
+const isOnline = id => isBot(id) || (players.get(id)?.sockets.size ?? 0) > 0;
 const nameOf = id => players.get(id)?.name ?? db.playerName(id) ?? '?';
 const seatOf = id => (table ? table.seats.indexOf(id) : -1);
 const inGame = () => table?.status === 'playing' || table?.status === 'paused';
 
 function newTable(ownerId, saved = null) {
-  return {
+  const t = {
     ownerId,
     rules: saved?.rules ?? defaultRules(),
     seats: saved?.seats ?? [ownerId, null, null, null],
@@ -48,19 +60,43 @@ function newTable(ownerId, saved = null) {
     savedState: saved?.state ?? null,
     rounds: saved ? db.sessionRounds(saved.sessionId) : [],
     game: null,
-    nextReady: new Set(),
+    roundTimer: null,
+    showResult: false,
+    nextRoundAt: 0,
+    turnSince: Date.now(), // hvornår den nuværende tur begyndte (til betænkningstid)
+    pausedAt: 0,
   };
+  for (const id of t.seats) {
+    const profile = id && db.botProfile(id);
+    if (profile) {
+      bots.set(id, profile);
+      t.present.add(id);
+      t.ready.add(id);
+    }
+  }
+  return t;
 }
 
-const snapshot = () => ({ seats: table.seats, game: table.game, nextReady: [...table.nextReady] });
+const snapshot = () => ({ seats: table.seats, game: table.game });
 
 function closeTable() {
   clearInterval(table.timer);
+  clearTimeout(table.roundTimer);
   table = null;
 }
 
 function toastTable(message) {
   for (const id of table.seats) for (const s of players.get(id)?.sockets ?? []) s.emit('toast', message);
+}
+
+function setPaused(paused) {
+  if (paused && table.status === 'playing') {
+    table.status = 'paused';
+    table.pausedAt = Date.now();
+  } else if (!paused && table.status === 'paused') {
+    table.status = 'playing';
+    table.turnSince += Date.now() - table.pausedAt; // pausen tæller ikke med i betænkningstiden
+  }
 }
 
 // ---------- Venterum og bord ----------
@@ -74,7 +110,7 @@ function leaveTable(id) {
   table.present.delete(id);
   if (!table.reserved) table.seats[seat] = null;
   if (table.ownerId === id) {
-    const next = table.seats.find(p => p && table.present.has(p));
+    const next = table.seats.find(p => p && table.present.has(p) && !isBot(p));
     if (next) table.ownerId = next;
     else closeTable();
   }
@@ -107,12 +143,14 @@ function cancelCountdown() {
 function startGame() {
   const t = table;
   t.ready.clear();
+  for (const id of t.seats) if (isBot(id)) t.ready.add(id);
   t.status = 'playing';
+  t.turnSince = Date.now();
   if (t.savedState) {
     t.game = t.savedState.game;
-    t.nextReady = new Set(t.savedState.nextReady);
     t.savedState = null;
     db.activateSession(t.sessionId);
+    if (t.game.phase === 'roundEnd') scheduleNextRound();
   } else {
     t.sessionId = db.createSession(t.ownerId, t.rules, t.seats);
     startRound(randomInt(4));
@@ -121,10 +159,7 @@ function startGame() {
 
 function wentOffline(id) {
   if (seatOf(id) < 0) return;
-  if (table.status === 'playing') {
-    table.status = 'paused';
-    return;
-  }
+  if (table.status === 'playing') return setPaused(true);
   if (table.status === 'paused') return;
   table.ready.delete(id);
   cancelCountdown();
@@ -151,7 +186,8 @@ function detach(socket) {
 
 function startRound(dealer) {
   table.game = G.newRound(dealer, table.rules);
-  table.nextReady.clear();
+  table.showResult = false;
+  table.turnSince = Date.now();
   db.storeState(table.sessionId, snapshot());
 }
 
@@ -160,15 +196,42 @@ function gameAction(id, fn) {
   if (seat < 0) throw new UserError('Du sidder ikke ved bordet');
   if (table.status === 'paused') throw new UserError('Spillet er sat på pause');
   if (table.status !== 'playing') throw new UserError('Spillet er ikke i gang');
-  fn(table.game, seat);
   const g = table.game;
+  const before = { phase: g.phase, bids: g.bidLog.length, plays: g.plays?.length ?? 0 };
+  const ms = Date.now() - table.turnSince;
+  fn(g, seat);
+  // Betænkningstid: fra turen begyndte, til spilleren traf sit valg.
+  if (g.bidLog.length > before.bids) g.bidLog.at(-1).ms = ms;
+  else if ((g.plays?.length ?? 0) > before.plays) g.plays.at(-1).ms = ms;
+  else (g.decisions ??= []).push({ seat, phase: before.phase, ms });
+  table.turnSince = Date.now();
+
   if (g.phase === 'passed') {
     toastTable('Alle meldte pas – der gives kort igen');
     startRound((g.dealer + 1) % 4);
   } else if (g.phase === 'roundEnd' && !g.recorded) {
     g.recorded = true;
     recordRound(g);
+    scheduleNextRound();
   }
+}
+
+// Efter sidste kort: kort pause, så scoren i 8 sekunder, så næste melderunde.
+function scheduleNextRound() {
+  const t = table, g = t.game;
+  clearTimeout(t.roundTimer);
+  t.showResult = false;
+  t.roundTimer = setTimeout(() => {
+    if (table !== t || t.game !== g) return;
+    t.showResult = true;
+    t.nextRoundAt = Date.now() + RESULT_SHOW_MS;
+    push();
+    t.roundTimer = setTimeout(() => {
+      if (table !== t || t.game !== g) return;
+      startRound((g.dealer + 1) % 4);
+      push();
+    }, RESULT_SHOW_MS);
+  }, RESULT_DELAY_MS);
 }
 
 function recordRound(g) {
@@ -190,9 +253,75 @@ function recordRound(g) {
     teamTricks: r.teamTricks,
     won: r.won,
     scores: ids.map((playerId, i) => ({ playerId, points: r.points[i] })),
+    seatIds: ids,
+    replay: G.replayOf(g),
   });
   table.rounds = db.sessionRounds(table.sessionId);
   db.storeState(table.sessionId, snapshot());
+}
+
+// ---------- AI-spillere ----------
+
+function botDelay(g) {
+  if (g.phase === 'play' && !g.trick.length && g.lastTrick) return DELAY * (1800 + randomInt(600)); // lad stikket ligge lidt
+  if (g.phase === 'bidding') return DELAY * (1000 + randomInt(1200));
+  return DELAY * (700 + randomInt(900));
+}
+
+function scheduleBots() {
+  if (botTimer || table?.status !== 'playing') return;
+  const t = table, g = t.game;
+  if (!g || g.turn == null || !isBot(t.seats[g.turn])) return;
+  const seat = g.turn, id = t.seats[seat];
+  botTimer = setTimeout(() => {
+    botTimer = null;
+    if (table !== t || t.game !== g || g.turn !== seat || t.status !== 'playing') return scheduleBots();
+    try {
+      botAct(id, AI.decide(g, seat, bots.get(id)));
+    } catch (err) {
+      console.error('AI-fejl, bruger nødløsning:', err);
+      botAct(id, fallbackDecision(g, seat));
+    }
+    push();
+  }, botDelay(g));
+}
+
+function botAct(id, d) {
+  gameAction(id, (g, seat) => {
+    switch (d.type) {
+      case 'bid': return G.bid(g, seat, d.bid);
+      case 'contract': return G.chooseContract(g, seat, d);
+      case 'halveTrump': return G.halveTrump(g, seat, d.trump);
+      case 'vip': return G.vip(g, seat, d.accept);
+      case 'exchange': return G.exchange(g, seat, d.take);
+      case 'discard': return G.discard(g, seat, d.cards);
+      case 'play': return G.play(g, seat, d.card);
+      default: throw new Error(`Ukendt AI-handling ${d.type}`);
+    }
+  });
+}
+
+// Hvis AI'en fejler, vælges en simpel lovlig handling, så spillet ikke går i stå.
+function fallbackDecision(g, seat) {
+  switch (g.phase) {
+    case 'bidding': return { type: 'bid', bid: null };
+    case 'contract': return { type: 'contract', trump: 'S', ace: G.ACES.find(a => a[0] !== 'S' && !g.hands[seat].includes(a)) ?? 'H14' };
+    case 'halveTrump': return { type: 'halveTrump', trump: G.SUITS.find(s => s !== g.contract.ace[0]) };
+    case 'vip': return { type: 'vip', accept: true };
+    case 'exchange': return { type: 'exchange', take: false };
+    default: return { type: 'play', card: G.legalCards(g, seat)[0] };
+  }
+}
+
+function addBot(profile) {
+  if (!AI.PROFILES[profile]) throw new UserError('Ukendt AI-profil');
+  const label = AI.PROFILES[profile].label;
+  const taken = new Set(table.seats.filter(Boolean).map(nameOf));
+  let name = `AI ${label}`;
+  for (let i = 2; taken.has(name); i++) name = `AI ${label} ${i}`;
+  const { id } = db.upsertBot(name, profile);
+  bots.set(id, profile);
+  return id;
 }
 
 // ---------- Visning ----------
@@ -208,9 +337,12 @@ function tableView(id) {
     mySeat: seat,
     seats: t.seats.map(p => p && {
       id: p, name: nameOf(p), online: isOnline(p), present: t.present.has(p), ready: t.ready.has(p),
+      bot: isBot(p) ? AI.PROFILES[bots.get(p)]?.label ?? 'AI' : null,
     }),
     game: t.game && seat >= 0 ? G.view(t.game, seat) : null,
-    nextReady: t.seats.map(p => t.nextReady.has(p)),
+    showResult: t.showResult,
+    nextRoundIn: t.showResult ? Math.max(0, t.nextRoundAt - Date.now()) : 0,
+    trickWinners: t.game?.trickWinners ?? [],
     rounds: t.rounds,
   };
 }
@@ -228,6 +360,7 @@ function viewFor(id) {
 
 function push() {
   for (const socket of io.sockets.sockets.values()) socket.emit('state', viewFor(socket.data.playerId));
+  scheduleBots();
 }
 
 // ---------- Socket-hændelser ----------
@@ -256,11 +389,17 @@ io.on('connection', socket => {
     if (!table || table.ownerId !== id) throw new UserError('Kun bordets ejer kan gøre det');
     return id;
   };
+  const atTable = () => {
+    const id = me();
+    if (!table?.present.has(id)) throw new UserError('Du sidder ikke ved bordet');
+    return id;
+  };
   const game = fn => (...args) => gameAction(me(), (g, seat) => fn(g, seat, ...args));
 
   on('hello', raw => {
     const name = String(raw ?? '').trim().replace(/\s+/g, ' ');
     if (name.length < 1 || name.length > 20) throw new UserError('Navnet skal være 1–20 tegn');
+    if (/^AI\b/i.test(name)) throw new UserError('Navne der starter med "AI" er forbeholdt AI-spillere');
     detach(socket);
     const p = db.upsertPlayer(name);
     let entry = players.get(p.id);
@@ -268,7 +407,7 @@ io.on('connection', socket => {
     clearTimeout(entry.leaveTimer);
     entry.sockets.add(socket);
     socket.data.playerId = p.id;
-    if (table?.status === 'paused' && table.seats.every(isOnline)) table.status = 'playing';
+    if (table?.status === 'paused' && table.seats.every(isOnline)) setPaused(false);
     return { id: p.id, name: p.name };
   });
 
@@ -305,16 +444,37 @@ io.on('connection', socket => {
 
   on('table:leave', () => leaveTable(me()));
 
+  on('table:addBot', profile => {
+    atTable();
+    if (table.status !== 'waiting' || table.reserved) throw new UserError('Der kan ikke tilføjes AI-spillere nu');
+    const free = table.seats.indexOf(null);
+    if (free < 0) throw new UserError('Bordet er fuldt');
+    const id = addBot(profile);
+    table.seats[free] = id;
+    table.present.add(id);
+    table.ready.add(id);
+    checkStart();
+  });
+
+  on('table:removeBot', seat => {
+    atTable();
+    const id = table.seats[Number(seat)];
+    if (!isBot(id)) throw new UserError('Der sidder ingen AI-spiller der');
+    if (table.status !== 'waiting' || table.reserved) throw new UserError('AI-spilleren kan ikke fjernes nu');
+    table.seats[Number(seat)] = null;
+    table.present.delete(id);
+    table.ready.delete(id);
+  });
+
   on('table:rules', rules => {
     owner();
     if (table.status !== 'waiting' || table.reserved) throw new UserError('Reglerne kan ikke ændres nu');
     table.rules = sanitizeRules(rules);
-    table.ready.clear(); // alle skal se de nye regler, før de er klar
+    for (const id of table.seats) if (id && !isBot(id)) table.ready.delete(id); // alle skal se de nye regler
   });
 
   on('table:ready', flag => {
-    const id = me();
-    if (!table?.present.has(id)) throw new UserError('Du sidder ikke ved bordet');
+    const id = atTable();
     if (inGame()) return;
     if (flag) table.ready.add(id);
     else table.ready.delete(id);
@@ -333,6 +493,15 @@ io.on('connection', socket => {
     closeTable();
   });
 
+  // Når scoren vises, kan alle ved bordet stoppe spillet i stedet for at gå videre.
+  on('table:stop', () => {
+    const id = atTable();
+    if (!inGame() || table.game?.phase !== 'roundEnd') throw new UserError('Spillet kan kun stoppes mellem runderne');
+    toastTable(`${nameOf(id)} stoppede spillet`);
+    db.endSession(table.sessionId);
+    closeTable();
+  });
+
   on('game:bid', game((g, seat, b) => G.bid(g, seat, b)));
   on('game:contract', game((g, seat, choice) => G.chooseContract(g, seat, choice)));
   on('game:halveTrump', game((g, seat, trump) => G.halveTrump(g, seat, trump)));
@@ -341,15 +510,13 @@ io.on('connection', socket => {
   on('game:discard', game((g, seat, cards) => G.discard(g, seat, cards)));
   on('game:play', game((g, seat, card) => G.play(g, seat, card)));
 
-  on('game:next', () => {
-    const id = me();
-    if (seatOf(id) < 0 || table.status !== 'playing' || table.game.phase !== 'roundEnd') return;
-    table.nextReady.add(id);
-    if (table.nextReady.size === 4) startRound((table.game.dealer + 1) % 4);
-  });
-
   on('history:list', () => db.sessionList());
   on('history:session', id => db.sessionDetail(Number(id)));
+  on('history:replay', roundId => {
+    const replay = db.roundReplay(Number(roundId));
+    if (!replay) throw new UserError('Runden kan ikke afspilles');
+    return replay;
+  });
   on('stats', () => db.stats());
 
   socket.on('disconnect', () => {
