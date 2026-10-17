@@ -84,7 +84,8 @@ Miljøvariabler:
 
    HTTPS er også nødvendigt for webcam-funktionen senere, da browsere kun giver adgang til kamera på sikre sider.
 
-Databasen ligger i `data/whist.db`. Tag backup af den mappe.
+Databasen ligger i `data/whist.db`. Tag backup af den mappe. Spillets tilstand gemmes efter hver handling, så et
+spil kan genoptages præcis hvor det slap – også efter en servergenstart (det ligger så under "Gemte borde").
 
 ## Database
 
@@ -117,6 +118,7 @@ server/
   ai.js       AI-spillere med tre risikoprofiler
   db.js       SQLite: spillere, spilleaftener, runder, point, statistik
 public/       klienten (ren HTML/CSS/JS, intet byggetrin)
+  cards/classic/  klassiske kort som SVG (CC0, se LICENSE.txt i mappen)
 test/         tests af spilmotoren
 tools/        simulering med fire bots
 ```

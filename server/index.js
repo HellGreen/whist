@@ -16,7 +16,10 @@ const PORT = Number(process.env.PORT) || 3000;
 const LEAVE_GRACE_MS = 15_000; // så et genindlæst faneblad ikke mister pladsen ved bordet
 // WHIST_DELAY_FACTOR < 1 gør alle ventetider kortere (bruges til test).
 const DELAY = Number(process.env.WHIST_DELAY_FACTOR ?? 1);
-const RESULT_DELAY_MS = 2_500 * DELAY; // pause efter sidste kort, før scoren vises
+// Under 0,2 er det en automatisk test; ellers skal stikanimationen (3,8 sek., TRICK_PHASES i
+// public/app.js) nå at blive færdig.
+const atLeast = (ms, min) => (DELAY < 0.2 ? ms : Math.max(min, ms));
+const RESULT_DELAY_MS = atLeast(2_500 * DELAY, 4_400); // pause efter sidste kort, før scoren vises
 const RESULT_SHOW_MS = 8_000 * DELAY; // så længe scoren vises, før næste runde starter
 const RULES_INFO = {
   ...rulesInfo(),
@@ -205,6 +208,7 @@ function gameAction(id, fn) {
   else if ((g.plays?.length ?? 0) > before.plays) g.plays.at(-1).ms = ms;
   else (g.decisions ??= []).push({ seat, phase: before.phase, ms });
   table.turnSince = Date.now();
+  db.storeState(table.sessionId, snapshot()); // så spillet kan genoptages præcis her
 
   if (g.phase === 'passed') {
     toastTable('Alle meldte pas – der gives kort igen');
@@ -263,7 +267,7 @@ function recordRound(g) {
 // ---------- AI-spillere ----------
 
 function botDelay(g) {
-  if (g.phase === 'play' && !g.trick.length && g.lastTrick) return DELAY * (1800 + randomInt(600)); // lad stikket ligge lidt
+  if (g.phase === 'play' && !g.trick.length && g.lastTrick) return atLeast(DELAY * (4200 + randomInt(600)), 4100); // efter stikanimationen
   if (g.phase === 'bidding') return DELAY * (1000 + randomInt(1200));
   return DELAY * (700 + randomInt(900));
 }

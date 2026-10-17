@@ -6,6 +6,10 @@
   <title>Es-makker whist</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♠</text></svg>">
   <link rel="stylesheet" href="style.css">
+  <script>
+    // Sæt det gemte tema før siden tegnes, så den ikke blinker lyst.
+    try { const theme = localStorage.getItem('whist.theme'); if (theme) document.documentElement.dataset.theme = theme; } catch { }
+  </script>
 </head>
 <body>
   <div id="app"><p class="connecting">Forbinder…</p></div>

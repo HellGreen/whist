@@ -280,7 +280,10 @@ export function play(s, seat, card) {
   s.trick.push({ seat, card });
   (s.plays ??= []).push({ seat, card });
   if (c.bid.nolo && noloDef(c.bid.nolo).open) s.openHand = true;
-  if (card === c.ace) c.partnerRevealed = true;
+  if (card === c.ace) {
+    c.partnerRevealed = true;
+    c.acePlayed = true;
+  }
   if (s.trick.length < 4) {
     s.turn = (seat + 1) % 4;
     return;
@@ -328,7 +331,8 @@ export function replayOf(s) {
 
 export function view(s, seat) {
   const c = s.contract;
-  const showPartner = c && (c.partnerRevealed || s.phase === 'roundEnd');
+  // Makkers navn vises først, når makker-esset er spillet (eller runden er slut).
+  const showPartner = c && (c.acePlayed || s.phase === 'roundEnd');
   return {
     phase: s.phase, dealer: s.dealer, forehand: s.forehand, turn: s.turn,
     hand: sortCards(s.hands[seat]),
@@ -340,6 +344,7 @@ export function view(s, seat) {
     allowedBids: s.phase === 'bidding' && s.turn === seat ? allowedBids(s, seat) : [],
     contract: c && {
       declarer: c.declarer, bid: c.bid, label: c.label, trump: c.trump, ace: c.ace,
+      alone: !!c.bid.nolo || c.bid.suffix === 'kvarte',
       partner: showPartner ? c.partner : null,
       katPartner: s.phase === 'roundEnd' ? c.katPartner : false,
       selfCall: s.phase === 'roundEnd' || seat === c.declarer ? c.selfCall : false,

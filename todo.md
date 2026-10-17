@@ -2,7 +2,9 @@
 
 - [ ] Snak om hvilke typer fejl AI-spillerne skal lave (i dag: et tilfældigt lovligt kort i 2 % / 5 % / 8 % af
       kortene for Forsigtig / Normal / Vovehals – se `gamble` i `server/ai.js`)
-- [ ] Dark mode, som spilleren altid kan slå til og fra – også ved bordet
+- [ ] Vælg korttema ved bordet (kun for spilleren selv). Temaerne findes allerede: `classic` og `simple`
+      i `public/app.js` (gemmes i localStorage under `whist.cards`) – der mangler kun en vælger i brugerfladen
+- [ ] Meldingspanelet: hvordan sol, ren sol og bordlægger skal vises (i dag vises kun navnet på meldingen)
 - [ ] Webcam: hver spiller kan aktivere sit webcam, som vises under spillerens navn ved bordet
       (der er allerede en tom `.cam`-plads under navnet i `public/app.js`; kræver HTTPS og WebRTC)
 - [ ] "Gå med" på vip og sol/ren sol

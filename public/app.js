@@ -2,6 +2,8 @@
 // Klient: tegner venterum, spillebord, historik og afspiller ud fra den tilstand serveren sender.
 const socket = io();
 const NAME_KEY = 'whist.name';
+const THEME_KEY = 'whist.theme';
+const CARD_THEME_KEY = 'whist.cards';
 
 const SUIT_SYM = { S: '♠', H: '♥', C: '♣', D: '♦' };
 const SUIT_NAME = { S: 'spar', H: 'hjerter', C: 'klør', D: 'ruder', NT: 'uden trumf' };
@@ -98,6 +100,13 @@ setInterval(() => {
   for (const el of document.querySelectorAll('[data-countdown]')) el.textContent = secs;
 }, 250);
 
+// ---------- Tema ----------
+
+const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+const isDark = () => (document.documentElement.dataset.theme ?? (darkQuery.matches ? 'dark' : 'light')) === 'dark';
+const themeButton = () => `<button data-action="theme" title="Skift mellem lyst og mørkt tema">${isDark() ? '☀️ Lyst' : '🌙 Mørkt'}</button>`;
+darkQuery.addEventListener('change', () => render());
+
 // ---------- Tegning ----------
 
 function render() {
@@ -128,6 +137,7 @@ function header() {
     <nav>
       <button data-action="history">Historik</button>
       <button data-action="stats">Statistik</button>
+      ${themeButton()}
       <span class="me">${esc(state.me.name)}</span>
       <button class="link" data-action="logout">skift navn</button>
     </nav>
@@ -244,17 +254,34 @@ function rulesBox(t, editable) {
 
 // ---------- Kort ----------
 
-function cardHtml(card, { action, disabled, selected, small, fromKat } = {}) {
-  const joker = card[0] === 'J';
-  const face = joker
-    ? '<span class="r">★</span><span class="s">JOKER</span>'
-    : `<span class="r">${RANK_SYM[+card.slice(1)] ?? card.slice(1)}</span><span class="s">${SUIT_SYM[card[0]]}</span><span class="s big">${SUIT_SYM[card[0]]}</span>`;
-  const cls = ['card', isRed(card) && 'red', joker && 'joker', small && 'small', selected && 'selected', fromKat && 'fromkat'].filter(Boolean).join(' ');
-  return action
-    ? `<button class="${cls}" data-action="${action}" data-card="${card}" ${disabled ? 'disabled' : ''}>${face}</button>`
-    : `<div class="${cls}">${face}</div>`;
+// Korttemaer. Temaet gælder kun for den enkelte spiller og huskes i browseren.
+// classic: klassiske kort (CC0, se public/cards/classic/LICENSE.txt). simple: værdi og kulørtegn.
+const CARD_THEMES = ['classic', 'simple'];
+const cardTheme = () => {
+  const theme = storage.get(CARD_THEME_KEY);
+  return CARD_THEMES.includes(theme) ? theme : 'classic';
+};
+
+function cardFace(card) {
+  if (cardTheme() === 'classic') return `<img src="cards/classic/${card}.svg" alt="${cardText(card)}" draggable="false">`;
+  if (card[0] === 'J') return '<span class="r">★</span><span class="s">JOKER</span>';
+  return `<span class="r">${RANK_SYM[+card.slice(1)] ?? card.slice(1)}</span><span class="s">${SUIT_SYM[card[0]]}</span><span class="s big">${SUIT_SYM[card[0]]}</span>`;
 }
-const backs = (n, small) => Array.from({ length: n }, () => `<div class="card back ${small ? 'small' : ''}"></div>`).join('');
+
+function cardHtml(card, { action, disabled, selected, small, fromKat } = {}) {
+  const cls = ['card', cardTheme(), isRed(card) && 'red', card[0] === 'J' && 'joker', small && 'small',
+    selected && 'selected', fromKat && 'fromkat'].filter(Boolean).join(' ');
+  return action
+    ? `<button class="${cls}" data-action="${action}" data-card="${card}" ${disabled ? 'disabled' : ''}>${cardFace(card)}</button>`
+    : `<div class="${cls}">${cardFace(card)}</div>`;
+}
+const backHtml = small => (cardTheme() === 'classic'
+  ? `<div class="card classic back ${small ? 'small' : ''}"><img src="cards/classic/back.svg" alt="" draggable="false"></div>`
+  : `<div class="card back ${small ? 'small' : ''}"></div>`);
+const backs = (n, small) => Array.from({ length: n }, () => backHtml(small)).join('');
+
+// Kulørtegn i rød/sort på en lys plade, så de kan ses i både lyst og mørkt tema.
+const suitHtml = s => `<span class="suit ${isRed(s) ? 'red' : 'black'}" title="${SUIT_NAME[s]}">${SUIT_SYM[s]}</span>`;
 
 // Seneste bud fra hver spiller, vist ud for spilleren i midten af bordet.
 // Den der skal melde, vises med "…" i stedet for sit forrige bud.
@@ -265,15 +292,30 @@ function bidBubbles(bidLog, rel, turn) {
   return Object.values(latest).map(e => `<div class="bubble pos-${rel(e.seat)} ${e.pass ? 'pass' : ''} ${e.thinking ? 'thinking' : ''}">${e.thinking ? '…' : bidText(e)}</div>`).join('');
 }
 
-// Den vundne melding i bordets hjørne.
-function contractCorner(c, names, animateKey) {
+// Den vundne melding i bordets hjørne:
+// linje 1 "8 ♣ til ♥" (melding, trumf, makker-es), linje 2 ét felt pr. stik i meldingen,
+// der bliver grønt, når melderens side vinder et stik. Makkers stik tæller først med,
+// når makker-esset er spillet (`partner` er null indtil da).
+function contractCorner(c, tricks, animateKey) {
   const enter = animateKey && !animatedContracts.has(animateKey);
   if (enter) animatedContracts.add(animateKey);
-  const rows = [`<div class="big">${esc(c.label)}</div>`, `<div>${esc(names(c.declarer))}</div>`];
-  rows.push(`<div>Trumf: <b>${c.trump ? trumpText(c.trump) : 'ikke bestemt'}</b></div>`);
-  if (c.ace) rows.push(`<div>Makker-es: <b>${cardText(c.ace)}</b></div>`);
-  if (c.partner != null) rows.push(`<div>Makker: <b>${c.partner === c.declarer ? 'selvmakker' : esc(names(c.partner))}</b></div>`);
-  return `<div class="contract-corner ${enter ? 'enter' : ''}">${rows.join('')}</div>`;
+  const nolo = c.nolo ?? !!c.bid?.nolo;
+  const pending = '<span class="pending">?</span>';
+  let line = esc(c.label);
+  if (!nolo) {
+    const trump = c.trump == null ? pending : c.trump === 'NT' ? 'sans' : suitHtml(c.trump);
+    const target = c.alone ? 'alene' : `til ${c.ace ? suitHtml(c.ace[0]) : pending}`;
+    line += ` ${trump} ${target}`;
+  }
+  let boxes = '';
+  if (!nolo) {
+    const goal = c.bid?.n ?? parseInt(c.label, 10);
+    const partner = c.partner != null && c.partner !== c.declarer ? tricks[c.partner] : 0;
+    const won = tricks[c.declarer] + partner;
+    boxes = `<div class="stik-boxes" title="${won} af ${goal} stik">${Array.from({ length: Math.max(goal, won) },
+      (_, i) => `<span class="stik-box ${i < won ? 'won' : ''} ${i >= goal ? 'over' : ''}"></span>`).join('')}</div>`;
+  }
+  return `<div class="contract-corner ${enter ? 'enter' : ''}"><div class="big">${line}</div>${boxes}</div>`;
 }
 
 // ---------- Spillebordet ----------
@@ -285,6 +327,9 @@ function gameScreen(t) {
   const rel = seat => POS[(seat - me + 4) % 4];
   const isOwner = t.ownerId === state.me.id;
   const roundKey = `${t.rounds.length}|${g.dealer}|${t.seats.map(s => s.id).join()}`;
+  const anim = trickAnimation(t, g);
+  // Vinderens stik tælles først med, når stikket er lagt i bunken.
+  const tricks = g.tricks.map((n, seat) => (anim && anim.phase !== 'done' && anim.winner === seat ? n - 1 : n));
 
   return `<div class="game">
     <header class="top">
@@ -292,15 +337,17 @@ function gameScreen(t) {
       <nav>
         <button data-action="standings">Stilling</button>
         <button data-action="history">Historik</button>
+        ${themeButton()}
         ${isOwner ? '<button data-action="save">Gem bordet</button><button class="danger" data-action="end">Afslut spil</button>' : ''}
       </nav>
     </header>
     <div class="table-area">
       <div class="felt-wrap">
         <div class="felt">
-          ${[0, 1, 2, 3].map(seat => seatHtml(t, g, seat, rel(seat))).join('')}
-          ${g.contract ? contractCorner(g.contract, s => t.seats[s].name, roundKey) : ''}
-          <div class="center">${centerHtml(t, g, rel)}</div>
+          ${[0, 1, 2, 3].map(seat => seatHtml(t, g, seat, rel(seat), tricks, anim)).join('')}
+          ${g.contract ? contractCorner(g.contract, tricks, roundKey) : ''}
+          <div class="center">${centerHtml(t, g, rel, anim)}</div>
+          <div class="my-hand">${handHtml(g, me, anim)}</div>
         </div>
       </div>
       <aside class="side">
@@ -308,38 +355,90 @@ function gameScreen(t) {
         ${trickPanel(t, g)}
       </aside>
     </div>
-    <section class="hand">${handHtml(g, me)}</section>
   </div>
   ${t.status === 'paused' ? pausedOverlay(t, isOwner) : ''}`;
 }
 
 const nameAt = seat => esc(state.table.seats[seat]?.name ?? '?');
 
-function seatHtml(t, g, seat, pos) {
+// Stikbunke: et kort med bagsiden op og antal stik ovenpå. Ligger ved siden af navneboksen.
+function trickPile(count, bump) {
+  if (!count) return '';
+  return `<div class="pile ${bump ? 'bump' : ''}" title="${count} stik">${backHtml(true)}<span>${count}</span></div>`;
+}
+
+function seatHtml(t, g, seat, pos, tricks, anim) {
   const p = t.seats[seat], c = g.contract;
   const tags = [];
   if (seat === g.dealer) tags.push('Giver');
   if (c?.declarer === seat) tags.push('Melder');
   if (c && c.partner === seat && c.partner !== c.declarer) tags.push('Makker');
-  const info = g.phase === 'play' || g.phase === 'roundEnd' ? `${g.tricks[seat]} stik` : '';
+  const pile = g.phase === 'play' || g.phase === 'roundEnd' ? trickPile(tricks[seat], anim?.bump && anim.winner === seat) : '';
   const open = g.openHand?.seat === seat
     ? `<div class="open-hand">${g.openHand.cards.map(x => cardHtml(x, { small: true })).join('')}</div>` : '';
-  return `<div class="seat pos-${pos} ${g.turn === seat ? 'turn' : ''} ${p.online ? '' : 'offline'}">
-    <div class="name">${p.bot ? '🤖 ' : ''}${esc(p.name)}${p.online ? '' : ' (offline)'}${tags.map(x => `<span class="tag">${x}</span>`).join('')}</div>
-    <div class="cam" data-seat="${seat}"></div>
-    ${info ? `<div class="info">${info}</div>` : ''}
-    ${open}
+  return `<div class="seat-wrap pos-${pos}">
+    <div class="seat ${g.turn === seat ? 'turn' : ''} ${p.online ? '' : 'offline'}">
+      <div class="name">${p.bot ? '🤖 ' : ''}${esc(p.name)}${p.online ? '' : ' (offline)'}</div>
+      ${tags.length ? `<div class="tags">${tags.map(x => `<span class="tag">${x}</span>`).join('')}</div>` : ''}
+      <div class="cam" data-seat="${seat}"></div>
+      ${open}
+    </div>
+    ${pile}
   </div>`;
 }
 
-function centerHtml(t, g, rel) {
+// Et færdigt stik afvikles i faser:
+//   lift   vinderkortet svæver op (10 % større) og bliver liggende i 2 sek.
+//   gather de andre kort flyver hen og lægger sig under vinderkortet
+//   flip   bunken vendes med bagsiden op
+//   move   bunken glider hen til vinderens stikbunke, der tæller én op (bump)
+// Serveren venter tilsvarende, før næste kort spilles ud (se server/index.js).
+const TRICK_PHASES = [['lift', 2300], ['gather', 500], ['flip', 400], ['move', 600], ['done', 500]];
+let trickAnim = { key: null, start: 0 };
+
+function trickAnimation(t, g) {
+  if ((g.phase !== 'play' && g.phase !== 'roundEnd') || g.trick.length || !g.lastTrick) return null;
+  const key = `${t.rounds.length}|${g.dealer}|${t.trickWinners.length}`;
+  if (trickAnim.key !== key) {
+    trickAnim = { key, start: Date.now() };
+    let at = 0;
+    for (const [, ms] of TRICK_PHASES) {
+      at += ms;
+      setTimeout(() => { if (trickAnim.key === key) render(); }, at + 20);
+    }
+  }
+  const elapsed = Date.now() - trickAnim.start;
+  let phaseStart = 0;
+  for (const [phase, ms] of TRICK_PHASES) {
+    if (elapsed < phaseStart + ms || phase === 'done') {
+      return { phase, winner: g.lastTrick.winner, phaseElapsed: elapsed - phaseStart, bump: phase === 'done' && elapsed < phaseStart + ms };
+    }
+    phaseStart += ms;
+  }
+  return null;
+}
+
+function centerHtml(t, g, rel, anim) {
   const c = g.contract;
   if (g.phase === 'bidding') return bidBubbles(g.bidLog, rel, g.turn);
   if (g.phase === 'roundEnd' && t.showResult) return resultBox(t, g);
   if (g.phase === 'play' || g.phase === 'roundEnd') {
-    const cards = g.trick.length ? g.trick : g.lastTrick?.cards ?? [];
-    const winner = g.trick.length ? null : g.lastTrick?.winner;
-    return cards.map(p => `<div class="played pos-${rel(p.seat)} ${p.seat === winner ? 'winner' : ''}">${cardHtml(p.card)}</div>`).join('');
+    if (!anim) return g.trick.map(p => `<div class="played pos-${rel(p.seat)}">${cardHtml(p.card)}</div>`).join('');
+    if (anim.phase === 'done') return '';
+    // Negativ forsinkelse, så en animation fortsætter, hvor den var, hvis siden tegnes igen undervejs.
+    const delay = `style="animation-delay: -${anim.phaseElapsed}ms"`;
+    const winnerPos = rel(anim.winner);
+    const winnerCard = g.lastTrick.cards.find(p => p.seat === anim.winner).card;
+    if (anim.phase === 'lift' || anim.phase === 'gather') {
+      return g.lastTrick.cards.map(p => (p.seat === anim.winner
+        ? `<div class="played pos-${winnerPos} winner ${anim.phase === 'lift' ? 'lifting' : 'lifted'}" ${anim.phase === 'lift' ? delay : ''}>${cardHtml(p.card)}</div>`
+        : `<div class="played pos-${rel(p.seat)} ${anim.phase === 'gather' ? `gather to-${winnerPos}` : ''}" ${anim.phase === 'gather' ? delay : ''}>${cardHtml(p.card)}</div>`)).join('');
+    }
+    if (anim.phase === 'flip') {
+      return `<div class="played pos-${winnerPos} stack"><div class="flipper" ${delay}>
+        <div class="face-front">${cardHtml(winnerCard)}</div><div class="face-back">${backHtml(false)}</div></div></div>`;
+    }
+    return `<div class="played pos-${winnerPos} stack moving to-${winnerPos}" ${delay}>${backHtml(false)}</div>`;
   }
   const flipped = c?.vipCards ?? [];
   const hidden = g.katCount - flipped.length;
@@ -367,16 +466,12 @@ function trickPanel(t, g) {
   if (g.phase !== 'play' && g.phase !== 'roundEnd') return '';
   const short = name => esc(name.length > 8 ? name.slice(0, 7) + '…' : name);
   const rows = t.trickWinners.map((w, i) => `<tr><td>${i + 1}</td>${t.seats.map((_, s) => `<td>${s === w ? '●' : ''}</td>`).join('')}</tr>`).join('');
-  const c = g.contract;
-  const goal = c.bid.nolo ? `Melderen må højst få ${c.bid.nolo.startsWith('ren') ? 0 : 1} stik` : `Mål: ${c.bid.n} stik`;
   return `<div class="trick-panel">
     <h4>Stik</h4>
     <table>
       <thead><tr><th>#</th>${t.seats.map(p => `<th title="${esc(p.name)}">${short(p.name)}</th>`).join('')}</tr></thead>
       <tbody>${rows}</tbody>
-      <tfoot><tr><td>Σ</td>${g.tricks.map(n => `<td>${n}</td>`).join('')}</tr></tfoot>
     </table>
-    <p class="muted">${goal}</p>
   </div>`;
 }
 
@@ -468,8 +563,10 @@ function contractChooser(g) {
   return html + `<div class="row"><button class="primary" data-action="confirmContract" ${ready ? '' : 'disabled'}>Bekræft</button></div>`;
 }
 
-function handHtml(g, me) {
+function handHtml(g, me, anim) {
   const c = g.contract;
+  // Man kan ikke spille ud, mens det forrige stik bliver samlet ind.
+  if (anim && anim.phase !== 'done') return g.hand.map(x => cardHtml(x)).join('');
   if (g.phase === 'exchange' && g.turn === me && c.tookKat) {
     return sortCards(g.hand).map(x => cardHtml(x, { action: 'toggleDiscard', selected: ui.discard.includes(x), fromKat: c.fromKat.includes(x) })).join('');
   }
@@ -692,7 +789,8 @@ function replayView(m) {
     const tags = [];
     if (seat === data.dealer) tags.push('Giver');
     if (!bidding && seat === c.declarer) tags.push('Melder');
-    if (!bidding && c.partner != null && seat === c.partner && seat !== c.declarer) tags.push('Makker');
+    if (!bidding && c.partner != null && seat === c.partner && seat !== c.declarer
+      && data.plays.slice(0, rs.count).some(p => p.card === c.ace)) tags.push('Makker');
     const hand = m.hidden.has(seat)
       ? backs(rs.hands[seat].length, true)
       : sortCards(rs.hands[seat]).map(x => cardHtml(x, { small: true })).join('');
@@ -712,7 +810,10 @@ function replayView(m) {
   } else {
     center = rs.trick.map(p => `<div class="played pos-${rel(p.seat)} ${p.seat === rs.winner ? 'winner' : ''}">${cardHtml(p.card)}</div>`).join('');
   }
-  const corner = bidding ? '' : contractCorner(c, s => data.players[s]?.name ?? '?', null);
+  const acePlayed = data.plays.slice(0, rs.count).some(p => p.card === c.ace);
+  const corner = bidding ? '' : contractCorner({
+    ...c, alone: c.nolo || !c.ace, partner: acePlayed || step === replayLastStep(data) ? c.partner : null,
+  }, rs.tricks, null);
   return `<div class="felt rp-felt">${seats}${corner}<div class="center">${center}</div></div>
     <p class="rp-caption">${replayCaption(data, step, rs)}</p>`;
 }
@@ -768,6 +869,12 @@ function replayPlay() {
 // ---------- Handlinger ----------
 
 const actions = {
+  theme() {
+    const theme = isDark() ? 'light' : 'dark';
+    document.documentElement.dataset.theme = theme;
+    storage.set(THEME_KEY, theme);
+    render();
+  },
   logout() {
     storage.del(NAME_KEY);
     socket.emit('logout');
