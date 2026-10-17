@@ -237,7 +237,7 @@ function rulesBox(t, editable) {
       ${order ? `<li>Påhæng fra lavest til højest: <b>${esc(order)}</b>${t.rules.bids.gode && t.rules.bids.halve ? ' – fx slår gode halve.' : '.'}</li>` : ''}
       ${nolos.map(x => `<li>${esc(x.label)} ligger mellem ${x.level} og ${x.level} med påhæng – den slås af ${x.level}+.</li>`).join('')}
       <li>Melderen kalder et es (ikke i trumf) for at finde sin makker. Kalder man et es, man selv har, er man selvmakker og får dobbelte point.</li>
-      <li>Jokerne er de højeste trumfer (den første joker i et stik vinder). Uden trumf kan en joker altid spilles, men den vinder aldrig.</li>
+      <li>En joker spillet ud som første kort vinder altid stikket. Spilles den ikke ud, har den ingen værdi, men den må altid lægges. Jokere kan ikke spilles ud i første stik.</li>
       <li>Man tager enten hele katten og lægger 3 kort, eller beholder sine kort.</li>
     </ul>
     <details><summary>Point</summary>
@@ -352,6 +352,7 @@ function gameScreen(t) {
   const tricks = g.tricks.map((n, seat) => (anim && anim.phase !== 'done' && anim.winner === seat ? n - 1 : n));
   // Visningen af sidste stik lukker af sig selv, når et nyt stik er afgjort.
   const showLast = g.lastCompleted && ui.lastTrick === g.lastCompleted.no && (!anim || anim.phase === 'done');
+  const choice = choiceHtml(t, g);
 
   return `<div class="game">
     <div class="table-area">
@@ -361,6 +362,7 @@ function gameScreen(t) {
           ${g.contract ? contractCorner(g.contract, tricks, roundKey) : ''}
           <div class="center">${centerHtml(t, g, rel, anim)}</div>
           <div class="my-hand">${handHtml(g, me, anim)}</div>
+          ${choice ? `<div class="table-choice">${choice}</div>` : ''}
           ${showLast ? lastTrickOverlay(g, rel) : ''}
         </div>
       </div>
@@ -514,17 +516,35 @@ function trickPanel(t, g, anim) {
   </div>`;
 }
 
-function panelHtml(t, g) {
-  const me = t.mySeat, c = g.contract, myTurn = g.turn === me;
-  const waiting = what => `<p class="muted">Venter på, at ${nameAt(g.turn)} ${what}…</p>`;
+// Valg efter meldingen (trumf, makker-es, vip, katten) vises på bordet over spillerens kort.
+const CHOICE_WAITING = {
+  contract: 'vælger trumf og makker-es', halveTrump: 'vælger trumf', vip: 'vipper', exchange: 'bytter med katten',
+};
 
+function panelHtml(t, g) {
+  const myTurn = g.turn === t.mySeat;
+  const waiting = what => `<p class="muted">Venter på, at ${nameAt(g.turn)} ${what}…</p>`;
+  if (CHOICE_WAITING[g.phase]) return myTurn ? '<p><b>Din tur</b> – vælg på bordet.</p>' : waiting(CHOICE_WAITING[g.phase]);
   switch (g.phase) {
     case 'bidding':
       return myTurn ? bidGrid(t, g) : waiting('melder');
+    case 'play':
+      return myTurn ? '<p><b>Din tur</b> – vælg et kort.</p>' : waiting('spiller');
+    case 'roundEnd':
+      return t.showResult ? '<p class="muted">Scoren vises på bordet.</p>' : '<p class="muted">Runden er slut…</p>';
+    default:
+      return '';
+  }
+}
+
+// Spillerens eget valg efter meldingen, eller '' hvis det ikke er spillerens tur til at vælge.
+function choiceHtml(t, g) {
+  const me = t.mySeat, c = g.contract;
+  if (!CHOICE_WAITING[g.phase] || g.turn !== me) return '';
+  switch (g.phase) {
     case 'contract':
-      return myTurn ? contractChooser(g) : waiting('vælger trumf og makker-es');
+      return contractChooser(g);
     case 'halveTrump': {
-      if (!myTurn) return waiting('vælger trumf');
       const aceSuit = c.ace[0];
       const intro = c.katPartner
         ? `Makker-esset ${cardText(c.ace)} ligger i katten – du er selvmakker og vælger trumf.`
@@ -532,7 +552,6 @@ function panelHtml(t, g) {
       return `<p>${intro}</p><div class="row">${suitButtons('halveTrump', null, s => s === aceSuit)}</div>`;
     }
     case 'vip': {
-      if (!myTurn) return waiting('vipper');
       const last = c.vipCards.at(-1);
       const trump = last[0] === 'J' ? 'NT' : last[0];
       return `<p>Vendt: <b>${cardText(last)}</b> (vip'${c.vipFlips})</p>
@@ -540,7 +559,6 @@ function panelHtml(t, g) {
         <button data-action="vip" data-accept="0">Vend næste kort</button></div>`;
     }
     case 'exchange': {
-      if (!myTurn) return waiting('bytter med katten');
       if (!c.tookKat) {
         return `<p>Vil du tage katten? Så skal du bagefter lægge 3 kort.</p>
           <div class="row"><button class="primary" data-action="takeKat">Tag katten</button><button data-action="keepCards">Behold mine kort</button></div>`;
@@ -548,10 +566,6 @@ function panelHtml(t, g) {
       return `<p>Vælg 3 kort at lægge (${ui.discard.length}/3). Kortene fra katten er markeret.</p>
         <div class="row"><button class="primary" data-action="discard" ${ui.discard.length === 3 ? '' : 'disabled'}>Læg kortene</button></div>`;
     }
-    case 'play':
-      return myTurn ? '<p><b>Din tur</b> – vælg et kort.</p>' : waiting('spiller');
-    case 'roundEnd':
-      return t.showResult ? '<p class="muted">Scoren vises på bordet.</p>' : '<p class="muted">Runden er slut…</p>';
     default:
       return '';
   }

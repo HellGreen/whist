@@ -61,7 +61,7 @@ function playTo(s, declarer, bid, choice) {
   if (choice) G.chooseContract(s, declarer, choice);
 }
 
-test('makker-es og stikspil med trumf og joker', () => {
+test('makker-es og jokere: joker kan ikke spilles ud i første stik, men vinder når den spilles ud', () => {
   const s = fixedRound(3);
   playTo(s, 0, { n: 7, suffix: null }, { trump: 'S', ace: 'H14' });
   G.exchange(s, 0, true);
@@ -69,15 +69,35 @@ test('makker-es og stikspil med trumf og joker', () => {
   G.discard(s, 0, ['S2', 'S3', 'S4']); // beholder jokerne
   assert.equal(s.phase, 'play');
   assert.equal(s.contract.partner, 1);
-  // Plads 0 spiller hjerter? Har ingen – spiller joker. Joker leder = trumf.
-  G.play(s, 0, 'J1');
-  // Plads 1 har ingen spar/joker -> alle kort er lovlige
-  assert.equal(G.legalCards(s, 1).length, 13);
+  assert.ok(!G.legalCards(s, 0).some(G.isJoker)); // ikke ud i første stik
+  assert.throws(() => G.play(s, 0, 'J1'), /må du ikke/);
+  G.play(s, 0, 'S5');
   G.play(s, 1, 'H2');
   G.play(s, 2, 'C2');
   G.play(s, 3, 'D2');
   assert.equal(s.tricks[0], 1);
-  assert.equal(s.turn, 0);
+  // Andet stik: jokeren må gerne spilles ud og vinder, selvom der kommer trumf bagefter.
+  G.play(s, 0, 'J1');
+  assert.equal(G.legalCards(s, 1).length, 12); // ingen kulør er bestemt endnu
+  G.play(s, 1, 'H3');
+  s.hands[2].push('S9');
+  G.play(s, 2, 'S9'); // trumf, men jokeren spillet ud vinder
+  G.play(s, 3, 'D3');
+  assert.equal(s.lastTrick.winner, 0);
+});
+
+test('jokere: en joker der ikke spilles ud har ingen værdi, men må altid lægges', () => {
+  const s = fixedRound(3);
+  playTo(s, 0, { n: 7, suffix: null }, { trump: 'C', ace: 'H14' });
+  G.exchange(s, 0, false);
+  s.hands[1].push('J1');
+  s.hands[1].push('S3');
+  G.play(s, 0, 'S5');
+  assert.ok(G.legalCards(s, 1).includes('J1')); // må lægges, selvom den kan bekende spar
+  G.play(s, 1, 'J1');
+  G.play(s, 2, 'C2'); // trumf
+  G.play(s, 3, 'D2');
+  assert.equal(s.lastTrick.winner, 2);
 });
 
 test('esmakker skal spille esset, når kuløren spilles ud', () => {
@@ -96,17 +116,22 @@ test('esmakker skal spille esset, når kuløren spilles ud', () => {
   assert.deepEqual(G.legalCards(s, 2), ['C14']);
 });
 
-test('sol uden trumf: joker vinder aldrig', () => {
+test('sol: en joker spillet ud vinder, og næste kort bestemmer kuløren', () => {
   const s = fixedRound(3);
   playTo(s, 0, { nolo: 'sol' });
   assert.equal(s.phase, 'exchange');
   G.exchange(s, 0, true);
   G.discard(s, 0, ['S14', 'S13', 'S12']);
-  G.play(s, 0, 'J1');
+  G.play(s, 0, 'S2');
   G.play(s, 1, 'H2');
   G.play(s, 2, 'C2');
   G.play(s, 3, 'D2');
-  assert.equal(s.tricks[1], 1); // første rigtige kort satte kuløren
+  assert.equal(s.tricks[0], 1); // melderen tog første stik med spar 2
+  G.play(s, 0, 'J1'); // joker ud = sikkert stik, også i sol
+  s.hands[2].push('H9');
+  G.play(s, 1, 'H3'); // første rigtige kort bestemmer kuløren
+  assert.deepEqual(G.legalCards(s, 2).filter(x => x[0] === 'H'), ['H9']);
+  assert.ok(!G.legalCards(s, 2).some(x => x[0] === 'C'));
 });
 
 test('point: 9 vip\'2 med 10 stik giver 4 til hver i makkerparret', () => {
@@ -204,4 +229,15 @@ test('nolo: esset tæller som 1', () => {
   G.play(s, 3, 'D2');
   assert.equal(s.lastTrick.winner, 1); // spar 5 slår esset
   assert.equal(G.trickWinnerOf([{ seat: 0, card: 'S14' }, { seat: 1, card: 'S5' }], null), 0); // men ikke uden for nolo
+});
+
+test('melderens klient ser ikke makker, før makker-esset er spillet', () => {
+  const s = fixedRound(3);
+  playTo(s, 0, { n: 7, suffix: null }, { trump: 'S', ace: 'C14' }); // plads 2 har klør es
+  G.exchange(s, 0, false);
+  assert.equal(G.view(s, 0).contract.partner, null);
+  G.play(s, 0, 'S2');
+  G.play(s, 1, 'H2');
+  G.play(s, 2, 'C14');
+  assert.equal(G.view(s, 0).contract.partner, 2); // afsløret i det øjeblik esset spilles
 });

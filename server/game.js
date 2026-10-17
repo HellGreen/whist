@@ -232,30 +232,29 @@ function startPlay(s) {
 
 export const trumpSuit = s => (s.contract.trump === 'NT' ? null : s.contract.trump);
 
-// Jokere er de højeste trumfer. I spil uden trumf er en joker "fri" og vinder aldrig.
-const effectiveSuit = (s, card) => (isJoker(card) ? trumpSuit(s) : suitOf(card));
-
-export function ledSuitOf(trick, trump) {
-  if (!trick.length) return null;
-  const first = trick[0].card;
-  if (!isJoker(first)) return suitOf(first);
-  if (trump) return trump;
+// Jokere: spilles en joker ud som første kort, vinder den stikket. Ellers har den ingen værdi,
+// men den må altid lægges. Jokere må ikke spilles ud i første stik.
+// Spilles en joker ud, er det næste rigtige kort, der bestemmer kuløren.
+export function ledSuitOf(trick) {
   const firstReal = trick.find(p => !isJoker(p.card));
   return firstReal ? suitOf(firstReal.card) : null;
 }
-const ledSuit = s => ledSuitOf(s.trick, trumpSuit(s));
+const ledSuit = s => ledSuitOf(s.trick);
 
 export function legalCards(s, seat) {
   if (s.phase !== 'play' || s.turn !== seat) return [];
   const hand = s.hands[seat];
+  if (!s.trick.length) {
+    const firstTrick = !(s.trickWinners?.length ?? s.tricks.reduce((a, b) => a + b, 0));
+    return firstTrick ? hand.filter(x => !isJoker(x)) : [...hand];
+  }
   const led = ledSuit(s);
   if (!led) return [...hand];
   const c = s.contract;
   // Esmakker skal spille makker-esset, når dets kulør spilles ud.
   if (c.ace && seat !== c.declarer && hand.includes(c.ace) && suitOf(c.ace) === led) return [c.ace];
-  const follow = hand.filter(x => effectiveSuit(s, x) === led);
-  if (!follow.length) return [...hand];
-  return trumpSuit(s) ? follow : [...follow, ...hand.filter(isJoker)];
+  const follow = hand.filter(x => !isJoker(x) && suitOf(x) === led);
+  return follow.length ? [...follow, ...hand.filter(isJoker)] : [...hand];
 }
 
 // Vinderen af et (evt. ufærdigt) stik, eller null hvis intet kort kan vinde endnu.
@@ -263,13 +262,12 @@ export function legalCards(s, seat) {
 export function trickWinnerOf(trick, trump, aceLow = false) {
   const rank = card => (aceLow && rankOf(card) === 14 ? 1 : rankOf(card));
   const highest = plays => plays.reduce((a, b) => (rank(b.card) > rank(a.card) ? b : a));
+  if (trick.length && isJoker(trick[0].card)) return trick[0].seat; // joker spillet ud vinder altid
   if (trump) {
-    const joker = trick.find(p => isJoker(p.card)); // første joker vinder
-    if (joker) return joker.seat;
-    const trumps = trick.filter(p => suitOf(p.card) === trump);
+    const trumps = trick.filter(p => !isJoker(p.card) && suitOf(p.card) === trump);
     if (trumps.length) return highest(trumps).seat;
   }
-  const led = ledSuitOf(trick, trump);
+  const led = ledSuitOf(trick);
   const following = trick.filter(p => !isJoker(p.card) && suitOf(p.card) === led);
   return following.length ? highest(following).seat : null;
 }

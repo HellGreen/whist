@@ -31,10 +31,10 @@ const highest = (cards, value = cardValue) => [...cards].sort((a, b) => value(b)
 // ---------- Vurdering af hånden ----------
 
 // Forventet antal stik på egen hånd med den givne trumf (null = uden trumf).
+// En joker giver et sikkert stik, når den spilles ud.
 export function ownTricks(hand, trump) {
-  const jokers = jokersIn(hand);
-  const trumpLength = trump ? ranksIn(hand, trump).length + jokers : 0;
-  let tricks = trump ? jokers : 0;
+  const trumpLength = trump ? ranksIn(hand, trump).length : 0;
+  let tricks = jokersIn(hand);
   for (const suit of SUITS) {
     const r = ranksIn(hand, suit);
     if (suit === trump) {
@@ -117,7 +117,7 @@ function chooseContract(s, seat) {
 function acceptVip(s, seat, p) {
   const hand = s.hands[seat], card = s.contract.vipCards.at(-1);
   if (isJoker(card)) return ownTricks(hand, null) >= 4;
-  return ranksIn(hand, suitOf(card)).length + jokersIn(hand) >= p.vipLength;
+  return ranksIn(hand, suitOf(card)).length >= p.vipLength;
 }
 
 function chooseDiscards(s, seat) {
@@ -164,12 +164,11 @@ function seenCards(s, seat) {
   return seen;
 }
 
-// Kan kortet ikke slås af noget kort, der stadig er ude?
+// Kan kortet ikke slås af noget kort, der stadig er ude? (En joker vinder kun, når den spilles ud.)
 function isMaster(s, seat, card) {
-  if (isJoker(card)) return true;
-  const seen = seenCards(s, seat), trump = trumpSuit(s), suit = suitOf(card);
+  if (isJoker(card)) return !s.trick.length;
+  const seen = seenCards(s, seat), suit = suitOf(card);
   for (let r = rankOf(card) + 1; r <= 14; r++) if (!seen.has(suit + r)) return false;
-  if (suit === trump) return ['J1', 'J2', 'J3'].every(j => seen.has(j));
   return true;
 }
 
@@ -194,9 +193,8 @@ function playTrump(s, seat, legal) {
     const masters = legal.filter(x => isMaster(s, seat, x));
     if (team.onAttack && trump) {
       const seen = seenCards(s, seat);
-      const trumpsOut = ['J1', 'J2', 'J3'].some(j => !seen.has(j))
-        || Array.from({ length: 13 }, (_, i) => trump + (i + 2)).some(x => !seen.has(x));
-      const masterTrumps = masters.filter(x => isJoker(x) || suitOf(x) === trump);
+      const trumpsOut = Array.from({ length: 13 }, (_, i) => trump + (i + 2)).some(x => !seen.has(x));
+      const masterTrumps = masters.filter(x => !isJoker(x) && suitOf(x) === trump);
       if (trumpsOut && masterTrumps.length) return highest(masterTrumps); // træk trumf
     }
     if (seat === c.declarer && !c.partnerRevealed && c.ace && !hand.includes(c.ace)) {
@@ -205,6 +203,8 @@ function playTrump(s, seat, legal) {
     }
     const sideMasters = masters.filter(x => !isJoker(x) && suitOf(x) !== trump);
     if (sideMasters.length) return highest(sideMasters);
+    const joker = legal.find(isJoker);
+    if (joker) return joker; // en joker spillet ud er et sikkert stik
     const bySuit = SUITS.filter(x => x !== trump).map(x => legal.filter(y => !isJoker(y) && suitOf(y) === x)).filter(x => x.length);
     if (!bySuit.length) return lowest(legal);
     bySuit.sort((a, b) => (team.onAttack ? b.length - a.length : a.length - b.length));
@@ -233,7 +233,7 @@ function playNolo(s, seat, legal) {
   if (seat === c.declarer) {
     const real = legal.filter(x => !isJoker(x));
     if (!s.trick.length) return low(real.length ? real : legal); // jokerne gemmes til nødstilfælde
-    const led = ledSuitOf(s.trick, null);
+    const led = ledSuitOf(s.trick);
     const following = legal.some(x => !isJoker(x) && suitOf(x) === led);
     const safe = losing.filter(x => !isJoker(x));
     if (following) {
