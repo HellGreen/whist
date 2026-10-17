@@ -20,7 +20,6 @@ let state = null;
 let ui = { key: '', trump: null, ace: null, discard: [] };
 let modal = null; // { type: 'standings' | 'html' | 'history' | 'replay', ... }
 let nextRoundDeadline = 0;
-const animatedContracts = new Set(); // meldinger der allerede er gledet ud i hjørnet
 
 const storage = {
   get: k => { try { return localStorage.getItem(k); } catch { return null; } },
@@ -300,9 +299,7 @@ function bidBubbles(bidLog, rel, turn) {
 // linje 1 "8 ♣ til ♥" (melding, trumf, makker-es), linje 2 ét felt pr. stik i meldingen,
 // der bliver grønt, når melderens side vinder et stik. Makkers stik tæller først med,
 // når makker-esset er spillet (`partner` er null indtil da).
-function contractCorner(c, tricks, animateKey) {
-  const enter = animateKey && !animatedContracts.has(animateKey);
-  if (enter) animatedContracts.add(animateKey);
+function contractCorner(c, tricks) {
   const nolo = c.nolo ?? !!c.bid?.nolo;
   const pending = '<span class="pending">?</span>';
   let line = esc(c.label);
@@ -335,7 +332,7 @@ function contractCorner(c, tricks, animateKey) {
       return `<span class="stik-box ${state} ${i >= goal ? 'over' : ''}"></span>`;
     }).join('')}</div>`;
   }
-  return `<div class="contract-corner ${enter ? 'enter' : ''}"><div class="big">${line}</div>${boxes}</div>`;
+  return `<div class="contract-corner"><div class="big">${line}</div>${boxes}</div>`;
 }
 
 // ---------- Spillebordet ----------
@@ -346,7 +343,6 @@ function gameScreen(t) {
   if (key !== ui.key) ui = { key, trump: null, ace: null, discard: [] };
   const rel = seat => POS[(seat - me + 4) % 4];
   const isOwner = t.ownerId === state.me.id;
-  const roundKey = `${t.rounds.length}|${g.dealer}|${t.seats.map(s => s.id).join()}`;
   const anim = trickAnimation(t, g);
   // Vinderens stik tælles først med, når stikket er lagt i bunken.
   const tricks = g.tricks.map((n, seat) => (anim && anim.phase !== 'done' && anim.winner === seat ? n - 1 : n));
@@ -359,7 +355,7 @@ function gameScreen(t) {
       <div class="felt-wrap">
         <div class="felt ${showLast ? 'show-last' : ''}">
           ${[0, 1, 2, 3].map(seat => seatHtml(t, g, seat, rel(seat), tricks, anim)).join('')}
-          ${g.contract ? contractCorner(g.contract, tricks, roundKey) : ''}
+          ${g.contract ? contractCorner(g.contract, tricks) : ''}
           <div class="center">${centerHtml(t, g, rel, anim)}</div>
           <div class="my-hand">${handHtml(g, me, anim)}</div>
           ${choice ? `<div class="table-choice">${choice}</div>` : ''}
@@ -866,7 +862,7 @@ function replayView(m) {
   const acePlayed = data.plays.slice(0, rs.count).some(p => p.card === c.ace);
   const corner = bidding ? '' : contractCorner({
     ...c, alone: c.nolo || !c.ace, partner: acePlayed || step === replayLastStep(data) ? c.partner : null,
-  }, rs.tricks, null);
+  }, rs.tricks);
   return `<div class="felt rp-felt">${seats}${corner}<div class="center">${center}</div></div>
     <p class="rp-caption">${replayCaption(data, step, rs)}</p>`;
 }

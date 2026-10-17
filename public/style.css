@@ -250,7 +250,7 @@ button.card:disabled { opacity: 1; filter: brightness(.7); }
 
 /* ---------- Meldinger, hjørne, stikpanel og score ---------- */
 .felt-wrap { gap: 12px; }
-.bubble { position: absolute; background: #fff; color: #23201b; padding: 6px 14px; border-radius: 16px; font-weight: 700; font-size: 18px; box-shadow: 0 3px 8px rgba(0, 0, 0, .35); white-space: nowrap; animation: pop .25s ease-out; }
+.bubble { position: absolute; background: #fff; color: #23201b; padding: 7px 15px; border-radius: 18px; font-weight: 700; font-size: 20px; box-shadow: 0 3px 8px rgba(0, 0, 0, .35); white-space: nowrap; animation: pop .25s ease-out; }
 .bubble.pass { background: var(--chip-muted); color: var(--muted); font-weight: 500; }
 .bubble.thinking { background: rgba(255, 255, 255, .55); }
 .bubble.pos-bottom { bottom: 0; left: 50%; transform: translateX(-50%); }
@@ -271,11 +271,6 @@ button.card:disabled { opacity: 1; filter: brightness(.7); }
 .stik-box.won { background: #2ea44f; }
 .stik-box.lost { background: #d0453a; }
 .stik-box.over { box-shadow: 0 0 0 2px var(--gold); }
-.contract-corner.enter { animation: to-corner .9s ease-in-out; }
-@keyframes to-corner {
-  from { transform: translate(var(--from-x, 120%), var(--from-y, 160%)) scale(1.6); opacity: .3; }
-  to { transform: none; opacity: 1; }
-}
 
 .trick-panel { background: var(--panel); color: var(--ink); border-radius: 8px; padding: 8px 10px; max-height: 100%; overflow: auto; font-size: 13px; }
 .trick-panel:empty { display: none; }
