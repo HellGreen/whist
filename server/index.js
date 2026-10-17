@@ -20,7 +20,7 @@ const DELAY = Number(process.env.WHIST_DELAY_FACTOR ?? 1);
 // public/app.js) nå at blive færdig.
 const atLeast = (ms, min) => (DELAY < 0.2 ? ms : Math.max(min, ms));
 const RESULT_DELAY_MS = atLeast(2_500 * DELAY, 4_400); // pause efter sidste kort, før scoren vises
-const RESULT_SHOW_MS = 8_000 * DELAY; // så længe scoren vises, før næste runde starter
+const RESULT_SHOW_MS = atLeast(5_000 * DELAY, 5_000); // så længe scoren vises, før næste runde starter
 const RULES_INFO = {
   ...rulesInfo(),
   aiProfiles: Object.values(AI.PROFILES).map(({ key, label, desc }) => ({ key, label, desc })),
@@ -220,7 +220,7 @@ function gameAction(id, fn) {
   }
 }
 
-// Efter sidste kort: kort pause, så scoren i 8 sekunder, så næste melderunde.
+// Efter sidste kort: stikanimationen, så scoren i 5 sekunder, så næste melderunde.
 function scheduleNextRound() {
   const t = table, g = t.game;
   clearTimeout(t.roundTimer);

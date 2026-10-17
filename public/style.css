@@ -115,12 +115,17 @@ table.grid tfoot td { font-weight: 700; }
 .countdown { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, .55); color: #fff; font-size: 30vmin; font-weight: 800; z-index: 50; }
 
 /* ---------- Spillet ---------- */
-.game { display: grid; grid-template-rows: auto minmax(300px, 1fr); height: 100vh; }
+.game { display: grid; grid-template-rows: minmax(300px, 1fr); height: 100vh; }
 /* Bordet og panelet står samlet med 200 px imellem i stedet for at panelet ligger helt ude til højre. */
 .table-area { display: flex; justify-content: center; gap: 200px; min-height: 0; background: #2b2118; }
 .felt-wrap { flex: none; display: flex; justify-content: center; align-items: center; min-height: 0; min-width: 0; padding: 10px; }
 .felt-wrap .felt { height: min(100%, calc(100vw - 600px)); }
 .side { width: 340px; flex: none; display: flex; flex-direction: column; gap: 10px; padding: 10px 10px 10px 0; overflow-y: auto; }
+/* Højre kolonne: giver øverst, handlinger og stik i midten, runde og knapper nederst. */
+.dealer-info { color: #f3efe6; font-size: 17px; padding: 4px 2px; }
+.round-box { margin-top: auto; background: var(--panel); border-radius: 8px; overflow: hidden; }
+.round-head { padding: 8px 12px; font-weight: 700; font-size: 17px; border-bottom: 1px solid var(--line); }
+.round-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px 12px 12px; }
 @media (max-width: 1500px) { .table-area { gap: 24px; } .felt-wrap .felt { height: min(100%, calc(100vw - 420px)); } }
 .side .panel { border-radius: 8px; border-top: none; }
 @media (max-width: 900px) {
@@ -176,9 +181,13 @@ table.grid tfoot td { font-weight: 700; }
 .bidgrid { display: inline-grid; gap: 4px; }
 .bidgrid .bidrow { display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; }
 .bidgrid button { min-width: 54px; padding: 4px 6px; }
-.suit-btn { font-size: 20px; min-width: 52px; }
+.choice-label { font-weight: 600; margin-top: 8px; }
+/* Kulørknapper som små hvide kort, så sort er sort og rød er rød i begge temaer. */
+.suit-btn { font-size: 25px; min-width: 65px; padding: 6px 10px; background: #fff; color: #111; border: 2px solid #ccc; }
 .suit-btn.red { color: var(--red); }
-.suit-btn.selected { color: #fff; }
+button.suit-btn.selected { background: #fff; color: #111; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent); }
+button.suit-btn.selected.red { color: var(--red); }
+.suit-btn:disabled { opacity: .3; }
 
 /* Spillerens egne kort ligger på bordet lige over navneboksen og overlapper 50 %. */
 .my-hand { position: absolute; left: 50%; bottom: 74px; transform: translateX(-50%); display: flex; z-index: 6; }
@@ -258,8 +267,9 @@ button.card:disabled { opacity: 1; filter: brightness(.7); }
 .suit.red { color: var(--red); }
 .suit.black { color: #111; }
 .stik-boxes { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-.stik-box { width: 16px; height: 16px; border-radius: 3px; background: #9a958b; transition: background .3s; }
-.stik-box.won { background: #2ea44f; animation: pop .4s ease-out; }
+.stik-box { width: 16px; height: 16px; border-radius: 3px; background: #9a958b; }
+.stik-box.won { background: #2ea44f; }
+.stik-box.lost { background: #d0453a; }
 .stik-box.over { box-shadow: 0 0 0 2px var(--gold); }
 .contract-corner.enter { animation: to-corner .9s ease-in-out; }
 @keyframes to-corner {

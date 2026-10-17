@@ -312,8 +312,15 @@ function contractCorner(c, tricks, animateKey) {
     const goal = c.bid?.n ?? parseInt(c.label, 10);
     const partner = c.partner != null && c.partner !== c.declarer ? tricks[c.partner] : 0;
     const won = tricks[c.declarer] + partner;
-    boxes = `<div class="stik-boxes" title="${won} af ${goal} stik">${Array.from({ length: Math.max(goal, won) },
-      (_, i) => `<span class="stik-box ${i < won ? 'won' : ''} ${i >= goal ? 'over' : ''}"></span>`).join('')}</div>`;
+    // Modspillernes stik kan kun tælles, når holdene kendes (makker afsløret eller melder alene).
+    // Når melderen ikke længere kan nå målet, bliver de yderste grå felter røde – ét pr. stik, der mangler.
+    const known = c.alone || c.partner != null;
+    const opponents = known ? tricks.reduce((a, b) => a + b, 0) - won : 0;
+    const lost = Math.min(goal - Math.min(won, goal), Math.max(0, goal - (13 - opponents)));
+    boxes = `<div class="stik-boxes" title="${won} af ${goal} stik">${Array.from({ length: Math.max(goal, won) }, (_, i) => {
+      const state = i < won ? 'won' : i >= goal - lost ? 'lost' : '';
+      return `<span class="stik-box ${state} ${i >= goal ? 'over' : ''}"></span>`;
+    }).join('')}</div>`;
   }
   return `<div class="contract-corner ${enter ? 'enter' : ''}"><div class="big">${line}</div>${boxes}</div>`;
 }
@@ -332,15 +339,6 @@ function gameScreen(t) {
   const tricks = g.tricks.map((n, seat) => (anim && anim.phase !== 'done' && anim.winner === seat ? n - 1 : n));
 
   return `<div class="game">
-    <header class="top">
-      <div>Runde ${t.rounds.length + (g.phase === 'roundEnd' ? 0 : 1)} · Giver: <b>${nameAt(g.dealer)}</b></div>
-      <nav>
-        <button data-action="standings">Stilling</button>
-        <button data-action="history">Historik</button>
-        ${themeButton()}
-        ${isOwner ? '<button data-action="save">Gem bordet</button><button class="danger" data-action="end">Afslut spil</button>' : ''}
-      </nav>
-    </header>
     <div class="table-area">
       <div class="felt-wrap">
         <div class="felt">
@@ -351,8 +349,18 @@ function gameScreen(t) {
         </div>
       </div>
       <aside class="side">
+        <div class="dealer-info">Giver: <b>${nameAt(g.dealer)}</b></div>
         <section class="panel">${panelHtml(t, g)}</section>
-        ${trickPanel(t, g)}
+        ${trickPanel(t, g, anim)}
+        <div class="round-box">
+          <div class="round-head">Runde ${t.rounds.length + (g.phase === 'roundEnd' ? 0 : 1)}</div>
+          <div class="round-buttons">
+            <button data-action="standings">Stilling</button>
+            <button data-action="history">Historik</button>
+            ${themeButton()}
+            ${isOwner ? '<button data-action="save">Gem bordet</button><button class="danger" data-action="end">Afslut spil</button>' : ''}
+          </div>
+        </div>
       </aside>
     </div>
   </div>
@@ -462,10 +470,14 @@ function resultBox(t, g) {
 }
 
 // Panel ved siden af bordet: hvem vandt hvert stik i runden.
-function trickPanel(t, g) {
+// Et stik får en tom linje, når første kort spilles; prikken kommer, når stikket er lagt i vinderens bunke.
+function trickPanel(t, g, anim) {
   if (g.phase !== 'play' && g.phase !== 'roundEnd') return '';
   const short = name => esc(name.length > 8 ? name.slice(0, 7) + '…' : name);
-  const rows = t.trickWinners.map((w, i) => `<tr><td>${i + 1}</td>${t.seats.map((_, s) => `<td>${s === w ? '●' : ''}</td>`).join('')}</tr>`).join('');
+  const winners = [...t.trickWinners];
+  if (anim && anim.phase !== 'done') winners[winners.length - 1] = null;
+  if (g.trick.length) winners.push(null);
+  const rows = winners.map((w, i) => `<tr><td>${i + 1}</td>${t.seats.map((_, s) => `<td>${s === w ? '●' : ''}</td>`).join('')}</tr>`).join('');
   return `<div class="trick-panel">
     <h4>Stik</h4>
     <table>
@@ -550,14 +562,14 @@ function contractChooser(g) {
   const ready = (!choosesTrump || ui.trump) && (!needsAce || ui.ace);
   let html = `<p>Du fik meldingen <b>${esc(c.label)}</b>.${fixed ? ` Trumf er ${trumpText(fixed)}.` : ''}
     ${sfx === 'halve' ? ' Kald et es – makker vælger trumf.' : ''}${sfx === 'vip' ? ' Kald et es – derefter vippes trumf fra katten.' : ''}</p>`;
-  if (choosesTrump) html += `<div class="row">Trumf: ${suitButtons('pickTrump', ui.trump)}</div>`;
+  if (choosesTrump) html += `<div class="choice-label">Trumf</div><div class="row">${suitButtons('pickTrump', ui.trump)}</div>`;
   if (needsAce) {
     const aces = ['S', 'H', 'C', 'D'].map(s => {
       const ace = s + '14';
       const blocked = trump && trump !== 'NT' && s === trump;
-      return `<button class="suit-btn ${isRed(s) ? 'red' : ''} ${ui.ace === ace ? 'selected' : ''}" data-action="pickAce" data-ace="${ace}" ${blocked ? 'disabled' : ''}>E${SUIT_SYM[s]}</button>`;
+      return `<button class="suit-btn ${isRed(s) ? 'red' : ''} ${ui.ace === ace ? 'selected' : ''}" data-action="pickAce" data-ace="${ace}" ${blocked ? 'disabled' : ''}>${SUIT_SYM[s]}</button>`;
     }).join('');
-    html += `<div class="row">Makker-es: ${aces}</div>`;
+    html += `<div class="choice-label">Makker-es</div><div class="row">${aces}</div>`;
     if (ui.ace && g.hand.includes(ui.ace)) html += '<p class="muted">Du har selv esset – du bliver selvmakker og spiller om dobbelte point.</p>';
   }
   return html + `<div class="row"><button class="primary" data-action="confirmContract" ${ready ? '' : 'disabled'}>Bekræft</button></div>`;
