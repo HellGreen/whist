@@ -397,6 +397,11 @@ table.rounds tr:not(.lost) td.result { color: var(--accent); }
 .rp-player.pos-left .rp-hand .card + .card, .rp-player.pos-right .rp-hand .card + .card { margin-top: -88px; }
 .rp-controls { text-align: center; }
 .rp-controls .row { display: flex; gap: 6px; justify-content: center; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+/* Styring og hastighed på én linje. */
+.rp-controls .row:has(#rp-play) { flex-wrap: nowrap; gap: 4px; }
+.rp-controls .row:has(#rp-play) button { padding: 6px 8px; white-space: nowrap; }
+.rp-controls .rp-speeds { display: inline-flex; gap: 4px; margin-left: 8px; }
+.rp-controls .rp-speeds button { padding: 6px 7px; font-size: 14px; }
 .rp-controls input[type=range] { width: 100%; }
 .rp-caption { min-height: 2.8em; margin: 4px 0 8px; }
 .rp-show { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin-top: 8px; text-align: left; }

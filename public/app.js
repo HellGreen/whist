@@ -930,12 +930,11 @@ function replayTable(m) {
   return `${players}${corner}<div class="center">${center}</div>`;
 }
 
-// Stikpanelet under afspilning: tom linje når et stik er i gang, prik når det er afgjort.
+// Stikpanelet under afspilning: alle rundens stik vises fra start (så panelerne under ikke flytter sig),
+// og prikken kommer, når stikket er afgjort.
 function replayTrickPanel(m, rs) {
-  if (rs.count === 0) return '';
   const short = name => esc(name.length > 8 ? name.slice(0, 7) + '…' : name);
-  const winners = m.data.trickWinners.slice(0, rs.done);
-  if (rs.count % 4) winners.push(null);
+  const winners = m.data.trickWinners.map((w, i) => (i < rs.done ? w : null));
   return `<div class="trick-panel"><h4>Stik</h4><table>
     <thead><tr><th>#</th>${m.data.players.map(p => `<th title="${esc(p.name)}">${short(p.name)}</th>`).join('')}</tr></thead>
     <tbody>${winners.map((w, i) => `<tr><td>${i + 1}</td>${m.data.players.map((_, s) => `<td>${s === w ? '●' : ''}</td>`).join('')}</tr>`).join('')}</tbody>
@@ -956,13 +955,11 @@ function renderReplay() {
           <section class="panel rp-controls">
             <p class="rp-caption" id="rp-caption"></p>
             <div class="row">
-              <button data-action="rpStep" data-to="first" title="Til start">⏮</button>
               <button data-action="rpStep" data-to="prev" title="Et trin tilbage">◀</button>
               <button class="primary" id="rp-play" data-action="rpToggle"></button>
               <button data-action="rpStep" data-to="next" title="Et trin frem">▶</button>
-              <button data-action="rpStep" data-to="last" title="Til slut">⏭</button>
+              <span class="rp-speeds">${SPEEDS.map((s, i) => `<button data-action="rpSpeed" data-speed="${i}" title="${s.ms / 1000} sek. mellem hvert trin">${s.label}</button>`).join('')}</span>
             </div>
-            <div class="row rp-speeds">${SPEEDS.map((s, i) => `<button data-action="rpSpeed" data-speed="${i}" title="${s.ms / 1000} sek. mellem hvert trin">${s.label}</button>`).join('')}</div>
             <input type="range" id="rp-slider" min="0" max="${last}" value="0">
             <div class="row">
               <button data-action="rpRound" data-dir="prev" ${data.prevId ? '' : 'disabled'}>← Forrige runde</button>
@@ -1083,7 +1080,7 @@ const actions = {
   },
   rpStep(d) {
     replayPause();
-    const to = { first: 0, prev: replay.step - 1, next: replay.step + 1, last: replayLastStep(replay.data) }[d.to];
+    const to = d.to === 'prev' ? replay.step - 1 : replay.step + 1;
     replayGoto(to);
   },
   rpSpeed(d) {
