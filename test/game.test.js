@@ -323,13 +323,13 @@ test('gå med: flere spiller sol hver for sig, og katten går videre', async () 
   G.discard(s, 1, ['S14', 'S13', 'S12']);
   assert.equal(s.phase, 'play');
 
-  // Point (sol = 1): begge hjem -> hver modspiller betaler 1 til hver vinder.
+  // Point (sol = 1): begge hjem -> hver modspiller betaler 1 til en vinder.
   const c = { declarer: 0, soloists: [0, 1], bid: { nolo: 'sol' } };
-  assert.deepEqual(scoreRound(c, [0, 1, 6, 6]).points, [2, 2, -2, -2]);
-  // Én hjem, én ned -> de tre tabere betaler til vinderen.
-  assert.deepEqual(scoreRound(c, [1, 2, 5, 5]).points, [3, -1, -1, -1]);
-  // Begge ned -> hver betaler til hver modspiller.
-  assert.deepEqual(scoreRound(c, [2, 3, 4, 4]).points, [-2, -2, 2, 2]);
+  assert.deepEqual(scoreRound(c, [0, 1, 6, 6]).points, [1, 1, -1, -1]);
+  // Én hjem, én ned -> taberen dækker alene vinderens fulde beløb.
+  assert.deepEqual(scoreRound(c, [1, 2, 5, 5]).points, [3, -3, 0, 0]);
+  // Begge ned -> hver betaler 1 til en modspiller.
+  assert.deepEqual(scoreRound(c, [2, 3, 4, 4]).points, [-1, -1, 1, 1]);
   // Én nolo-spiller: almindelig afregning.
   assert.deepEqual(scoreRound({ declarer: 0, bid: { nolo: 'sol' } }, [1, 4, 4, 4]).points, [3, -1, -1, -1]);
 });

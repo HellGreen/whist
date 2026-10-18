@@ -19,20 +19,28 @@ export function basePoints(contract) {
   return points;
 }
 
-// Nolo, evt. med flere der er gået med: de der går hjem, er vindere; alle andre er tabere og
-// betaler grundpointene til hver vinder. Går alle nolo-spillere ned, betaler hver af dem til
-// hver modspiller. Med én nolo-spiller er det den almindelige afregning (±3 / ∓1).
+// Nolo. Med én nolo-spiller: den almindelige afregning (±3 / ∓1 til hver af de andre).
+// Med flere der er gået med (eksempel med to og grundpoint 1):
+//   én hjem, én ned: taberen dækker alene vinderens fulde beløb (3)     -> +3, −3, 0, 0
+//   alle ned:        hver nolo-spiller betaler 1 til en modspiller      -> −1, −1, +1, +1
+//   alle hjem:       hver modspiller betaler 1 til en vinder             -> +1, +1, −1, −1
 function scoreNolo(contract, tricks) {
   const soloists = contract.soloists ?? [contract.declarer];
   const max = noloDef(contract.bid.nolo).maxTricks, p = basePoints(contract);
   const results = soloists.map(seat => ({ seat, tricks: tricks[seat], won: tricks[seat] <= max }));
   const winners = results.filter(r => r.won).map(r => r.seat);
+  const losers = results.filter(r => !r.won).map(r => r.seat);
+  const opponents = [0, 1, 2, 3].filter(i => !soloists.includes(i));
   const points = [0, 0, 0, 0];
-  if (winners.length) {
-    for (const w of winners) for (let i = 0; i < 4; i++) if (!winners.includes(i)) { points[w] += p; points[i] -= p; }
+  const pay = (from, to, amount) => { points[from] -= amount; points[to] += amount; };
+  if (soloists.length === 1) {
+    for (const o of opponents) pay(soloists[0], o, winners.length ? -p : p);
+  } else if (winners.length && losers.length) {
+    for (const l of losers) for (const w of winners) pay(l, w, (3 * p) / winners.length);
+  } else if (winners.length) {
+    for (const o of opponents) for (const w of winners) pay(o, w, p / opponents.length);
   } else {
-    const opponents = [0, 1, 2, 3].filter(i => !soloists.includes(i));
-    for (const sl of soloists) for (const o of opponents) { points[sl] -= p; points[o] += p; }
+    for (const l of losers) for (const o of opponents) pay(l, o, p / opponents.length);
   }
   return { won: results[0].won, teamTricks: results[0].tricks, points, solo: true, partner: null, soloists: results };
 }
