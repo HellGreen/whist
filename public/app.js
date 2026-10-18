@@ -32,7 +32,7 @@ const isRed = card => card[0] === 'H' || card[0] === 'D';
 const cardText = card => (card[0] === 'J' ? 'Joker' : `${SUIT_SYM[card[0]]}${RANK_SYM[+card.slice(1)] ?? card.slice(1)}`);
 const trumpText = t => (t == null ? '–' : t === 'NT' ? 'uden trumf' : `${SUIT_SYM[t]} ${SUIT_NAME[t]}`);
 const bidKey = b => b.nolo ?? `${b.n}:${b.suffix ?? ''}`;
-const bidText = e => (e.pass ? 'pas' : (e.hold ? 'holder ' : '') + esc(e.label));
+const bidText = e => (e.pass ? 'pas' : e.join ? 'går med' : (e.hold ? 'holder ' : '') + esc(e.label));
 
 const FRACTIONS = { 0.125: '⅛', 0.25: '¼', 0.375: '⅜', 0.5: '½', 0.625: '⅝', 0.75: '¾', 0.875: '⅞' };
 function fmtPts(n) {
@@ -302,7 +302,7 @@ function bidBubbles(bidLog, rel, turn) {
 // linje 1 "8 ♣ til ♥" (melding, trumf, makker-es), linje 2 ét felt pr. stik i meldingen,
 // der bliver grønt, når melderens side vinder et stik. Makkers stik tæller først med,
 // når makker-esset er spillet (`partner` er null indtil da).
-function contractCorner(c, tricks) {
+function contractCorner(c, tricks, names = null) {
   const nolo = c.nolo ?? !!c.bid?.nolo;
   const pending = '<span class="pending">?</span>';
   let line = esc(c.label);
@@ -316,11 +316,15 @@ function contractCorner(c, tricks) {
     // Sol og bordlægger: ét tomt felt (melderen må tage ét stik). Ren sol og ren bordlægger: ingen.
     // Melderens stik: grønt hvis det er tilladt, ellers rødt.
     const def = state.rulesInfo.nolos.find(x => x.key === c.bid?.nolo || x.label === c.label);
-    const allowed = def?.maxTricks ?? 0, taken = tricks[c.declarer];
-    if (Math.max(allowed, taken)) {
-      boxes = `<div class="stik-boxes" title="${taken} stik – må højst tage ${allowed}">${Array.from({ length: Math.max(allowed, taken) },
-        (_, i) => `<span class="stik-box ${i < taken ? (i < allowed ? 'won' : 'lost') : ''}"></span>`).join('')}</div>`;
-    }
+    const allowed = def?.maxTricks ?? 0;
+    const soloists = c.soloists ?? [c.declarer];
+    boxes = soloists.map(seat => {
+      const taken = tricks[seat];
+      const cells = Array.from({ length: Math.max(allowed, taken) },
+        (_, i) => `<span class="stik-box ${i < taken ? (i < allowed ? 'won' : 'lost') : ''}"></span>`).join('');
+      const who = soloists.length > 1 && names ? `<span class="who">${esc(names(seat))}</span>` : '';
+      return cells || who ? `<div class="stik-boxes" title="${taken} stik – må højst tage ${allowed}">${who}${cells}</div>` : '';
+    }).join('');
   } else {
     const goal = c.bid?.n ?? parseInt(c.label, 10);
     const partner = c.partner != null && c.partner !== c.declarer ? tricks[c.partner] : 0;
@@ -358,7 +362,7 @@ function gameScreen(t) {
       <div class="felt-wrap">
         <div class="felt ${showLast ? 'show-last' : ''}">
           ${[0, 1, 2, 3].map(seat => seatHtml(t, g, seat, rel(seat), tricks, anim)).join('')}
-          ${g.contract ? contractCorner(g.contract, tricks) : ''}
+          ${g.contract ? contractCorner(g.contract, tricks, s => t.seats[s].name) : ''}
           <div class="center">${centerHtml(t, g, rel, anim)}</div>
           ${turnHint(t, g, anim)}
           <div class="my-hand">${handHtml(g, me, anim)}</div>
@@ -407,11 +411,12 @@ function seatHtml(t, g, seat, pos, tricks, anim) {
   const tags = [];
   if (seat === g.dealer) tags.push('Giver');
   if (c?.declarer === seat) tags.push('Melder');
+  if (c?.soloists?.slice(1).includes(seat)) tags.push('Går med');
   if (c && c.partner === seat && c.partner !== c.declarer) tags.push('Makker');
   const peek = g.lastCompleted?.winner === seat && (!anim || anim.phase === 'done');
   const pile = g.phase === 'play' || g.phase === 'roundEnd' ? trickPile(tricks[seat], anim?.bump && anim.winner === seat, peek) : '';
-  const open = g.openHand?.seat === seat
-    ? `<div class="open-hand">${g.openHand.cards.map(x => cardHtml(x, { small: true })).join('')}</div>` : '';
+  const openHand = g.openHands?.find(o => o.seat === seat);
+  const open = openHand ? `<div class="open-hand">${openHand.cards.map(x => cardHtml(x, { small: true })).join('')}</div>` : '';
   const thinking = g.turn === seat && seat !== t.mySeat && g.phase !== 'bidding' && (!anim || anim.phase === 'done');
   return `<div class="seat-wrap pos-${pos}">
     ${thinking ? '<div class="thinking-dots" title="Det er denne spillers tur"><span></span><span></span><span></span></div>' : ''}
@@ -490,9 +495,15 @@ function resultBox(t, g) {
   if (c.bid.nolo || c.bid.suffix === 'kvarte') who = 'alene';
   else if (r.solo) who = c.katPartner ? 'alene (makker-esset lå i katten)' : 'som selvmakker';
   else who = `med ${nameAt(r.partner)}`;
+  const several = r.soloists?.length > 1;
+  const outcome = several
+    ? `<p><b>${esc(c.label)}</b> – ${r.soloists.map(x => `${nameAt(x.seat)} ${x.won ? '✔' : '✘'} (${x.tricks} stik)`).join(' · ')}</p>`
+    : `<p>${nameAt(c.declarer)} meldte <b>${esc(c.label)}</b> ${who} og fik ${r.teamTricks} stik.</p>`;
+  const title = several ? (r.soloists.every(x => x.won) ? '✔ Alle gik hjem!' : r.soloists.some(x => x.won) ? 'Delvist hjem' : '✘ Alle gik ned')
+    : r.won ? '✔ Meldingen gik hjem!' : '✘ Meldingen gik ned';
   return `<div class="result-box">
-    <h3>${r.won ? '✔ Meldingen gik hjem!' : '✘ Meldingen gik ned'}</h3>
-    <p>${nameAt(c.declarer)} meldte <b>${esc(c.label)}</b> ${who} og fik ${r.teamTricks} stik.</p>
+    <h3>${title}</h3>
+    ${outcome}
     <table class="pts">${t.seats.map((p, i) => `<tr><td>${esc(p.name)}</td><td class="num ${r.points[i] < 0 ? 'neg' : ''}">${fmtPts(r.points[i])}</td></tr>`).join('')}</table>
     <p class="muted">Næste runde om <b data-countdown>${Math.ceil(t.nextRoundIn / 1000)}</b> sek.</p>
   </div>`;
@@ -515,11 +526,12 @@ function trickTable(names, winners, c) {
   const short = name => esc(name.length > 13 ? name.slice(0, 12) + '…' : name);
   const nolo = c.nolo ?? !!c.bid?.nolo;
   const allowed = state.rulesInfo.nolos.find(x => x.key === c.bid?.nolo || x.label === c.label)?.maxTricks ?? 0;
-  let declarerTricks = 0;
+  const soloists = c.soloists ?? [c.declarer];
+  const taken = [0, 0, 0, 0];
   const box = w => {
-    if (w === c.declarer) declarerTricks++;
+    taken[w]++;
     let cls;
-    if (nolo) cls = w !== c.declarer ? '' : declarerTricks <= allowed ? 'won' : 'lost';
+    if (nolo) cls = !soloists.includes(w) ? '' : taken[w] <= allowed ? 'won' : 'lost';
     else if (w === c.declarer) cls = 'won';
     else if (c.partner != null && c.partner !== c.declarer) cls = w === c.partner ? 'won' : 'lost';
     else cls = c.alone || c.partner === c.declarer ? 'lost' : '';
@@ -567,6 +579,11 @@ function choiceHtml(t, g) {
         <button data-action="vip" data-accept="0">Vend næste kort</button></div>`;
     }
     case 'exchange': {
+      const before = [...(c.exchanges ?? [])].reverse().find(x => x.took);
+      if (!c.tookKat && before) {
+        return `<p>${nameAt(before.seat)} har lagt 3 kort. Vil du tage dem? Så skal du bagefter lægge 3 kort.</p>
+          <div class="row"><button class="primary" data-action="takeKat">Tag kortene</button><button data-action="keepCards">Behold mine kort</button></div>`;
+      }
       if (!c.tookKat) {
         return `<p>Vil du tage katten? Så skal du bagefter lægge 3 kort.</p>
           <div class="row"><button class="primary" data-action="takeKat">Tag katten</button><button data-action="keepCards">Behold mine kort</button></div>`;
@@ -593,9 +610,11 @@ function bidGrid(t, g) {
   }
   const nolos = info.nolos.filter(x => t.rules.bids[x.key]);
   if (nolos.length) rows.push(`<div class="bidrow">${nolos.map(x => btn({ nolo: x.key }, x.label)).join('')}</div>`);
+  const high = [...g.bidLog].reverse().find(e => !e.pass && !e.join);
+  const join = g.canJoin ? `<button class="primary" data-action="joinBid" title="Spil samme nolo-melding – hver for sig">Gå med (${esc(high?.label ?? '')})</button>` : '';
   return `<p><b>Din tur til at melde.</b></p>
     <div class="bidgrid">${rows.join('')}</div>
-    <div class="row"><button class="danger" data-action="pass">Pas</button></div>`;
+    <div class="row">${join}<button class="danger" data-action="pass">Pas</button></div>`;
 }
 
 function suitButtons(action, selected, isDisabled = () => false) {
@@ -932,9 +951,13 @@ function replayState(data, step) {
   const c = data.contract;
   const hands = data.dealt.hands.map(h => [...h]);
   let kat = [...data.dealt.kat];
-  if (step >= contractStep(data) && c.tookKat) {
-    hands[c.exchanger] = [...hands[c.exchanger], ...kat].filter(x => !c.discards.includes(x));
-    kat = [];
+  if (step >= contractStep(data)) {
+    const exchanges = c.exchanges ?? (c.tookKat ? [{ seat: c.exchanger, took: true, discards: c.discards }] : []);
+    for (const ex of exchanges) {
+      if (!ex.took) continue;
+      hands[ex.seat] = [...hands[ex.seat], ...kat].filter(x => !ex.discards.includes(x));
+      kat = ex.discards; // den næste bytter med de kort, der blev lagt
+    }
   }
   const count = Math.max(0, step - contractStep(data));
   for (const p of data.plays.slice(0, count)) hands[p.seat] = hands[p.seat].filter(x => x !== p.card);
@@ -952,12 +975,14 @@ function replayCaption(data, step, rs) {
   if (step === 0) return `Kortene er givet. ${name(data.dealer)} er giver, ${name(data.forehand)} er forhånd.`;
   if (step < contractStep(data)) {
     const e = data.bidLog[step - 1];
+    if (e.join) return `${name(e.seat)} går med på <b>${esc(e.label)}</b>.`;
     return e.pass ? `${name(e.seat)} melder pas.` : `${name(e.seat)} ${e.hold ? 'holder' : 'melder'} <b>${esc(e.label)}</b>.`;
   }
   if (step === contractStep(data)) {
-    const kat = c.tookKat
-      ? `${name(c.exchanger)} tog katten og lagde ${c.discards.map(cardText).join(' ')}.`
-      : `${name(c.exchanger)} beholdt sine kort.`;
+    const exchanges = c.exchanges ?? [{ seat: c.exchanger, took: c.tookKat, discards: c.discards }];
+    const kat = exchanges.map(ex => (ex.took
+      ? `${name(ex.seat)} tog ${ex === exchanges[0] ? 'katten' : 'kortene'} og lagde ${ex.discards.map(cardText).join(' ')}.`
+      : `${name(ex.seat)} beholdt sine kort.`)).join(' ');
     const vip = c.vipCards.length ? ` Vippede: ${c.vipCards.map(cardText).join(' ')}.` : '';
     return `${name(c.declarer)} fik meldingen <b>${esc(c.label)}</b>.${vip} ${kat}`;
   }
@@ -985,6 +1010,7 @@ function replayTable(m) {
     const tags = [];
     if (seat === data.dealer) tags.push('Giver');
     if (!bidding && seat === c.declarer) tags.push('Melder');
+    if (!bidding && c.soloists?.slice(1).includes(seat)) tags.push('Går med');
     if (!bidding && c.partner != null && seat === c.partner && seat !== c.declarer && acePlayed) tags.push('Makker');
     const cards = m.hidden.has(seat)
       ? backs(rs.hands[seat].length)
@@ -1012,7 +1038,7 @@ function replayTable(m) {
   }
   const corner = bidding ? '' : contractCorner({
     ...c, alone: c.nolo || !c.ace, partner: acePlayed || step === replayLastStep(data) ? c.partner : null,
-  }, rs.tricks);
+  }, rs.tricks, s => data.players[s]?.name ?? '?');
   return `${players}${corner}<div class="center">${center}</div>`;
 }
 
@@ -1120,6 +1146,7 @@ const actions = {
   save: () => confirm('Gem bordet og send alle tilbage til venterummet?') && socket.emit('table:save'),
   end: () => confirm('Afslut spillet for alle? Stillingen gemmes i historikken.') && socket.emit('table:end'),
   bid: d => socket.emit('game:bid', JSON.parse(d.bid)),
+  joinBid: () => socket.emit('game:bid', { join: true }),
   pass: () => socket.emit('game:bid', null),
   pickTrump(d) {
     ui.trump = d.suit;

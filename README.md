@@ -131,7 +131,12 @@ valgt følgende, som er bekræftet (alt kan justeres i `server/bids.js`, `server
 - **Påhæng, lav → høj:** vip < halve < stærke < gode < trumfløse < kvarte. Ethvert påhæng på N slår N, men ikke N+1
   (kvarte har altså ikke den særlige "7 kvarte slår 9"-regel).
 - **Nolo:** sol (9–9+), ren sol (10–10+), bordlægger (11–11+) og ren bordlægger (12–12+). Alle er med som standard.
-- **Holde:** en spiller tidligere i melderunden må melde det samme som en senere spiller. Reglen er slået til som
+- **Holde:** en spiller tidligere i melderunden må melde det samme som en senere spiller (ikke ved nolo).
+- **Gå med:** på en nolo-melding kan de andre gå med i stedet for at melde højere. De spiller samme melding hver
+  for sig, og resten prøver at vælte dem alle. Melderen bytter først med katten; derefter kan den næste der gik
+  med bytte med de 3 kort, melderen lagde, osv. Runden fortsætter, til alle nolo-spillere er gået ned eller 13
+  stik er spillet. Point: de der går hjem, er vindere, og alle andre betaler grundpointene til hver vinder. Går alle
+  nolo-spillere ned, betaler hver af dem til hver modspiller. Reglen er slået til som
   standard og kan slås fra af bordets ejer.
 - **Alle passer:** der gives om, og giveren rykker en plads.
 - **Jokere:** en joker spillet ud som første kort er et sikkert stik, og de andre må lægge hvad som helst. Spilles

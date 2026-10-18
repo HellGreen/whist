@@ -458,3 +458,6 @@ table.rounds tr:not(.lost) td.result { color: var(--accent); }
 .pairs-chart .donut-label { fill: var(--muted); font-size: 15px; }
 .pairs-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 8px; vertical-align: -1px; }
 .pairs-legend tr.none td { color: var(--muted); }
+
+/* Nolo med flere spillere: navn foran hver spillers felter i meldingspanelet. */
+.stik-boxes .who { font-size: 12px; margin-right: 6px; color: var(--muted); }

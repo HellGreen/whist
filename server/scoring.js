@@ -19,22 +19,36 @@ export function basePoints(contract) {
   return points;
 }
 
+// Nolo, evt. med flere der er gået med: de der går hjem, er vindere; alle andre er tabere og
+// betaler grundpointene til hver vinder. Går alle nolo-spillere ned, betaler hver af dem til
+// hver modspiller. Med én nolo-spiller er det den almindelige afregning (±3 / ∓1).
+function scoreNolo(contract, tricks) {
+  const soloists = contract.soloists ?? [contract.declarer];
+  const max = noloDef(contract.bid.nolo).maxTricks, p = basePoints(contract);
+  const results = soloists.map(seat => ({ seat, tricks: tricks[seat], won: tricks[seat] <= max }));
+  const winners = results.filter(r => r.won).map(r => r.seat);
+  const points = [0, 0, 0, 0];
+  if (winners.length) {
+    for (const w of winners) for (let i = 0; i < 4; i++) if (!winners.includes(i)) { points[w] += p; points[i] -= p; }
+  } else {
+    const opponents = [0, 1, 2, 3].filter(i => !soloists.includes(i));
+    for (const sl of soloists) for (const o of opponents) { points[sl] -= p; points[o] += p; }
+  }
+  return { won: results[0].won, teamTricks: results[0].tricks, points, solo: true, partner: null, soloists: results };
+}
+
 // Vundet: grundpoint × (1 + overstik). Tabt: grundpoint × manglende stik.
 // Makkerpar: begge får pointene, begge modspillere betaler dem.
-// Alene (selvmakker, kvarte, nolo): hver modspiller betaler, melderen får 3×.
+// Alene (selvmakker, kvarte): hver modspiller betaler, melderen får 3×.
 export function scoreRound(contract, tricks) {
   const { declarer, partner, bid } = contract;
+  if (bid.nolo) return scoreNolo(contract, tricks);
   const solo = partner == null || partner === declarer;
   const teamTricks = solo ? tricks[declarer] : tricks[declarer] + tricks[partner];
   let points = basePoints(contract);
-  let won;
-  if (bid.nolo) {
-    won = tricks[declarer] <= noloDef(bid.nolo).maxTricks;
-  } else {
-    const diff = teamTricks - bid.n;
-    won = diff >= 0;
-    points *= won ? 1 + diff : -diff;
-  }
+  const diff = teamTricks - bid.n;
+  const won = diff >= 0;
+  points *= won ? 1 + diff : -diff;
   const sign = won ? 1 : -1;
   const result = [0, 1, 2, 3].map(seat => {
     if (seat === declarer) return sign * points * (solo ? 3 : 1);

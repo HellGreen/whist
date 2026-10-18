@@ -256,6 +256,7 @@ function recordRound(g) {
     vipFlips: c.vipFlips || null,
     teamTricks: r.teamTricks,
     won: r.won,
+    joiners: (r.soloists ?? []).slice(1).map(x => ({ playerId: ids[x.seat], won: x.won ? 1 : 0, tricks: x.tricks })),
     scores: ids.map((playerId, i) => ({ playerId, points: r.points[i] })),
     seatIds: ids,
     replay: G.replayOf(g),

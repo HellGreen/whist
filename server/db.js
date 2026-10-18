@@ -91,6 +91,7 @@ const MIGRATIONS = [
   ['rounds', 'replay', 'TEXT'], // fuldt forløb (kort, meldinger, kat, stik) som JSON til afspilleren
   ['round_plays', 'think_ms', 'INTEGER'],
   ['players', 'bot_profile', 'TEXT'], // NULL = menneske, ellers AI-profil (safe | normal | risky)
+  ['rounds', 'joiners', 'TEXT'], // nolo: JSON [{ playerId, won, tricks }] for dem der gik med
 ];
 
 export function openDb(file) {
@@ -196,11 +197,11 @@ export function openDb(file) {
       tx(() => {
         const { lastInsertRowid } = q(`
           INSERT INTO rounds (session_id, round_no, dealer_id, declarer_id, partner_id, solo, bid_kind,
-            bid_level, bid_label, trump, called_ace, self_call, vip_flips, team_tricks, won, replay)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+            bid_level, bid_label, trump, called_ace, self_call, vip_flips, team_tricks, won, replay, joiners)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
           r.sessionId, r.roundNo, r.dealerId, r.declarerId, r.partnerId, r.solo ? 1 : 0, r.bidKind,
           r.bidLevel, r.bidLabel, r.trump, r.calledAce, r.selfCall ? 1 : 0, r.vipFlips, r.teamTricks, r.won ? 1 : 0,
-          r.replay ? JSON.stringify(r.replay) : null);
+          r.replay ? JSON.stringify(r.replay) : null, r.joiners?.length ? JSON.stringify(r.joiners) : null);
         const insert = q('INSERT INTO round_scores (round_id, player_id, points) VALUES (?, ?, ?)');
         for (const s of r.scores) insert.run(lastInsertRowid, s.playerId, s.points);
         if (!r.replay) return;
@@ -250,7 +251,9 @@ export function openDb(file) {
         playedAt: r.played_at,
         bidLabel: r.bid_label,
         declarer: r.declarer_name,
-        partner: NOLO_KINDS.includes(r.bid_kind) ? '–' : r.solo ? (r.partner_id ? 'selvmakker' : 'alene') : r.partner_name,
+        partner: NOLO_KINDS.includes(r.bid_kind)
+          ? (r.joiners ? `gik med: ${JSON.parse(r.joiners).map(j => this.playerName(j.playerId)).join(', ')}` : '–')
+          : r.solo ? (r.partner_id ? 'selvmakker' : 'alene') : r.partner_name,
         declarerId: r.declarer_id,
         partnerId: r.solo ? null : r.partner_id,
         teamTricks: r.team_tricks,
@@ -280,21 +283,29 @@ export function openDb(file) {
     stats(sessionId = null) {
       const session = '(?1 IS NULL OR r.session_id = ?1)';
       const all = sql => q(sql).all(sessionId);
+      // Alle meldere: melderen af runden + dem der gik med på en nolo-melding.
+      const declarers = `(
+        SELECT r.declarer_id AS pid, r.bid_kind AS kind, r.bid_label AS label, r.bid_level AS level, r.won AS won,
+          r.team_tricks AS tricks, r.session_id AS session_id FROM rounds r
+        UNION ALL
+        SELECT json_extract(j.value, '$.playerId'), r.bid_kind, r.bid_label, r.bid_level, json_extract(j.value, '$.won'),
+          json_extract(j.value, '$.tricks'), r.session_id FROM rounds r, json_each(r.joiners) j
+      )`;
       return {
         totals: all(`
           SELECT p.name, COUNT(DISTINCT r.session_id) AS sessions, COUNT(*) AS rounds, SUM(rs.points) AS points
           FROM round_scores rs JOIN rounds r ON r.id = rs.round_id JOIN players p ON p.id = rs.player_id
           WHERE ${session} GROUP BY p.id ORDER BY points DESC`),
         declarer: all(`
-          SELECT p.name, r.bid_kind AS kind, COUNT(*) AS played, SUM(r.won) AS won,
-            AVG(CASE WHEN r.bid_level IS NOT NULL THEN r.team_tricks - r.bid_level END) AS diff
-          FROM rounds r JOIN players p ON p.id = r.declarer_id
-          WHERE ${session} GROUP BY p.id, r.bid_kind ORDER BY p.name, played DESC`),
+          SELECT p.name, r.kind, COUNT(*) AS played, SUM(r.won) AS won,
+            AVG(CASE WHEN r.level IS NOT NULL THEN r.tricks - r.level END) AS diff
+          FROM ${declarers} r JOIN players p ON p.id = r.pid
+          WHERE ${session} GROUP BY p.id, r.kind ORDER BY p.name, played DESC`),
         // Hver melding (fx "8 gode", "Sol"); sorteres efter rangorden i server/index.js.
         bids: all(`
-          SELECT r.bid_label AS label, r.bid_kind AS kind, r.bid_level AS level, COUNT(*) AS played, SUM(r.won) AS won,
-            AVG(CASE WHEN r.bid_level IS NOT NULL THEN r.team_tricks - r.bid_level END) AS diff
-          FROM rounds r WHERE ${session} GROUP BY r.bid_label`),
+          SELECT r.label, r.kind, r.level, COUNT(*) AS played, SUM(r.won) AS won,
+            AVG(CASE WHEN r.level IS NOT NULL THEN r.tricks - r.level END) AS diff
+          FROM ${declarers} r WHERE ${session} GROUP BY r.label`),
         pairs: all(`
           SELECT d.name AS declarer, m.name AS partner, COUNT(*) AS played, SUM(r.won) AS won
           FROM rounds r JOIN players d ON d.id = r.declarer_id JOIN players m ON m.id = r.partner_id

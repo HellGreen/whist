@@ -76,8 +76,15 @@ const order = (s, seat) => (seat - s.forehand + 4) % 4;
 function canBid(s, seat, bid) {
   if (!s.high) return true;
   const r = bidRank(bid), hr = bidRank(s.high.bid);
-  const mayHold = s.rules.hold !== false; // gemte spil fra før reglen fandtes, havde den slået til
+  // Gemte spil fra før reglen fandtes, havde "hold" slået til. Nolo kan ikke holdes – man går med i stedet.
+  const mayHold = s.rules.hold !== false && !bid.nolo;
   return r > hr || (mayHold && r === hr && order(s, seat) < order(s, s.high.seat));
+}
+
+// "Gå med" på en nolo-melding: man spiller samme nolo som melderen, men hver for sig.
+export function canJoin(s, seat) {
+  return s.phase === 'bidding' && s.turn === seat && !!s.high?.bid.nolo
+    && s.high.seat !== seat && !(s.high.joined ?? []).includes(seat);
 }
 
 export function allowedBids(s, seat) {
@@ -91,29 +98,40 @@ export function bid(s, seat, raw) {
   if (raw == null) {
     s.passed[seat] = true;
     s.bidLog.push({ seat, pass: true });
+  } else if (raw.join) {
+    if (!canJoin(s, seat)) throw new UserError('Du kan ikke gå med nu');
+    (s.high.joined ??= []).push(seat);
+    s.bidLog.push({ seat, bid: s.high.bid, join: true });
   } else {
     const b = parseBid(raw, s.rules);
     if (!canBid(s, seat, b)) throw new UserError('Meldingen skal være højere end den nuværende');
     const hold = !!s.high && bidRank(b) === bidRank(s.high.bid);
-    s.high = { seat, bid: b };
+    s.high = { seat, bid: b, joined: [] }; // et overbud nulstiller dem, der gik med
     s.bidLog.push({ seat, bid: b, hold });
   }
+  // Melderunden slutter, når alle der ikke har passet, har den højeste melding eller er gået med på den.
+  const group = s.high ? [s.high.seat, ...(s.high.joined ?? [])] : [];
   const active = [0, 1, 2, 3].filter(i => !s.passed[i]);
   if (active.length === 0) {
     s.phase = 'passed';
     s.turn = null;
-  } else if (active.length === 1 && s.high?.seat === active[0]) {
+  } else if (active.every(i => group.includes(i))) {
     finishBidding(s);
   } else {
     let next = (seat + 1) % 4;
-    while (s.passed[next]) next = (next + 1) % 4;
+    while (s.passed[next] || group.includes(next)) next = (next + 1) % 4;
     s.turn = next;
   }
 }
 
 function finishBidding(s) {
   const { seat, bid: b } = s.high;
+  // Ved nolo: melderen og dem der gik med (i rækkefølge efter melderen). De bytter med katten efter tur.
+  const joined = (s.high.joined ?? []).slice().sort((x, y) => ((x - seat + 4) % 4) - ((y - seat + 4) % 4));
   s.contract = {
+    soloists: b.nolo ? [seat, ...joined] : undefined,
+    exchangeQueue: b.nolo ? joined : [],
+    exchanges: [],
     declarer: seat, bid: b, label: bidLabel(b),
     trump: null, // S | H | C | D | NT (uden trumf); null = ikke bestemt endnu
     ace: null, partner: null, partnerRevealed: false,
@@ -198,7 +216,7 @@ export function exchange(s, seat, take) {
   expectTurn(s, seat, 'exchange');
   const c = s.contract;
   if (c.tookKat) throw new UserError('Du har allerede taget katten');
-  if (!take) return startPlay(s);
+  if (!take) return exchangeDone(s, seat);
   c.tookKat = true;
   c.katCards = s.kat;
   s.hands[seat] = [...s.hands[seat], ...s.kat];
@@ -214,7 +232,20 @@ export function discard(s, seat, cards) {
   }
   s.hands[seat] = hand.filter(x => !cards.includes(x));
   s.discards = cards;
-  startPlay(s);
+  exchangeDone(s, seat);
+}
+
+// Når en har byttet: næste der gik med på nolo, kan bytte med de 3 kort der blev lagt
+// (eller med katten, hvis den ikke blev taget). Ellers starter spillet.
+function exchangeDone(s, seat) {
+  const c = s.contract;
+  (c.exchanges ??= []).push({ seat, took: c.tookKat, discards: c.tookKat ? s.discards : [] });
+  const next = c.exchangeQueue?.shift();
+  if (next == null) return startPlay(s);
+  if (c.tookKat) s.kat = s.discards;
+  c.tookKat = false;
+  c.katCards = [];
+  startExchange(s, next);
 }
 
 function startPlay(s) {
@@ -231,6 +262,7 @@ function startPlay(s) {
 // ---------- Stikspil ----------
 
 export const trumpSuit = s => (s.contract.trump === 'NT' ? null : s.contract.trump);
+export const soloistsOf = c => c.soloists ?? [c.declarer]; // nolo-spillerne (gemte spil havde kun melderen)
 
 // Jokere: spilles en joker ud som første kort, vinder den stikket, og de andre må lægge
 // hvad som helst (der er ingen kulør at bekende). Ellers har en joker ingen værdi og må kun
@@ -297,8 +329,9 @@ export function play(s, seat, card) {
   s.lastTrick = { cards: s.trick, winner };
   s.trick = [];
   s.turn = winner;
-  const failedNolo = c.bid.nolo && s.tricks[c.declarer] > noloDef(c.bid.nolo).maxTricks;
-  if (failedNolo || s.tricks.reduce((a, b) => a + b) === 13) {
+  // Nolo: spillet fortsætter, til alle nolo-spillere har taget for mange stik (eller 13 stik er spillet).
+  const allFailed = c.bid.nolo && soloistsOf(c).every(x => s.tricks[x] > noloDef(c.bid.nolo).maxTricks);
+  if (allFailed || s.tricks.reduce((a, b) => a + b) === 13) {
     s.result = scoreRound(c, s.tricks);
     s.phase = 'roundEnd';
     s.turn = null;
@@ -317,12 +350,14 @@ export function replayOf(s) {
     dealt: s.dealt,
     bidLog: s.bidLog.map(e => (e.pass
       ? { seat: e.seat, pass: true, ms: e.ms }
-      : { seat: e.seat, hold: e.hold, label: bidLabel(e.bid), ms: e.ms })),
+      : { seat: e.seat, hold: e.hold, join: e.join, label: bidLabel(e.bid), ms: e.ms })),
     decisions: s.decisions ?? [], // betænkningstid for trumf/es, vip og kat
     contract: {
       declarer: c.declarer, label: c.label, nolo: !!c.bid.nolo, trump: c.trump, ace: c.ace, partner: c.partner,
       selfCall: c.selfCall, katPartner: c.katPartner, vipCards: c.vipCards,
-      exchanger: c.exchanger, tookKat: c.tookKat, discards: c.tookKat ? s.discards : [],
+      exchanger: c.exchanges?.[0]?.seat ?? c.exchanger, tookKat: c.exchanges?.[0]?.took ?? c.tookKat,
+      discards: c.exchanges?.[0]?.discards ?? (c.tookKat ? s.discards : []),
+      exchanges: c.exchanges, soloists: c.bid.nolo ? soloistsOf(c) : undefined,
     },
     plays: s.plays,
     trickWinners: s.trickWinners,
@@ -350,8 +385,9 @@ export function view(s, seat) {
     legal: legalCards(s, seat),
     bidLog: s.bidLog.map(e => (e.pass
       ? { seat: e.seat, pass: true }
-      : { seat: e.seat, hold: e.hold, label: bidLabel(e.bid) })),
+      : { seat: e.seat, hold: e.hold, join: e.join, label: bidLabel(e.bid) })),
     allowedBids: s.phase === 'bidding' && s.turn === seat ? allowedBids(s, seat) : [],
+    canJoin: canJoin(s, seat),
     contract: c && {
       declarer: c.declarer, bid: c.bid, label: c.label, trump: c.trump, ace: c.ace,
       alone: !!c.bid.nolo || c.bid.suffix === 'kvarte',
@@ -361,15 +397,17 @@ export function view(s, seat) {
       vipFlips: c.vipFlips, vipCards: c.vipCards,
       exchanger: c.exchanger, tookKat: c.tookKat,
       fromKat: c.exchanger === seat ? c.katCards : [],
+      soloists: c.bid.nolo ? soloistsOf(c) : undefined,
+      // Hvem der har byttet før (ikke hvilke kort – dem ser kun den, der tager dem).
+      exchanges: (c.exchanges ?? []).map(({ seat: who, took }) => ({ seat: who, took })),
     },
     katCount: s.kat.length,
     trick: s.trick,
     lastTrick: s.lastTrick,
     lastCompleted: lastCompleted(s),
     tricks: s.tricks,
-    openHand: s.openHand && c.declarer !== seat
-      ? { seat: c.declarer, cards: sortCards(s.hands[c.declarer], true) }
-      : null,
+    // Bordlægger: nolo-spillernes kort ligger åbent efter første udspil.
+    openHands: s.openHand ? soloistsOf(c).filter(x => x !== seat).map(x => ({ seat: x, cards: sortCards(s.hands[x], true) })) : [],
     result: s.result,
   };
 }

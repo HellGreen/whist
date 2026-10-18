@@ -2,7 +2,7 @@
 // (meldinger, spillede kort, kendt makker), og træffer valg ud fra simple tommelfingerregler.
 import { bidRank } from './bids.js';
 import {
-  ACES, SUITS, allowedBids, isJoker, ledSuitOf, legalCards, rankOf, suitOf, trickWinnerOf, trumpSuit,
+  ACES, SUITS, allowedBids, canJoin, isJoker, ledSuitOf, legalCards, rankOf, soloistsOf, suitOf, trickWinnerOf, trumpSuit,
 } from './game.js';
 
 export const PROFILES = {
@@ -80,6 +80,8 @@ const bidKey = b => b.nolo ?? `${b.n}:${b.suffix ?? ''}`;
 
 function chooseBid(s, seat, p) {
   const hand = s.hands[seat];
+  // Gå med på en nolo-melding, hvis hånden selv er god nok til den.
+  if (canJoin(s, seat) && noloDanger(hand) <= p.noloSlack - NOLO_EXTRA[s.high.bid.nolo]) return { join: true };
   const allowed = new Set(allowedBids(s, seat).map(bidKey));
   const wanted = [];
   const best = bestTrump(hand);
@@ -172,6 +174,18 @@ function isMaster(s, seat, card) {
   return true;
 }
 
+// Kulører som spilleren har vist sig at være renonce i (offentlig viden: bekendte ikke kulør).
+export function voidSuits(s, seat) {
+  const voids = new Set(), plays = s.plays ?? [];
+  for (let i = 0; i < plays.length; i += 4) {
+    const trick = plays.slice(i, i + 4);
+    if (isJoker(trick[0].card)) continue; // joker spillet ud: ingen kulør at bekende
+    const led = suitOf(trick[0].card), own = trick.find(p => p.seat === seat);
+    if (own && (isJoker(own.card) || suitOf(own.card) !== led)) voids.add(led);
+  }
+  return voids;
+}
+
 function winsWith(s, seat, card) {
   return trickWinnerOf([...s.trick, { seat, card }], trumpSuit(s), !!s.contract.bid.nolo) === seat;
 }
@@ -226,11 +240,11 @@ function playTrump(s, seat, legal) {
 }
 
 function playNolo(s, seat, legal) {
-  const c = s.contract;
+  const c = s.contract, soloists = soloistsOf(c);
   const low = cards => lowest(cards, noloValue);
   const high = cards => highest(cards, noloValue);
   const losing = legal.filter(x => !winsWith(s, seat, x));
-  if (seat === c.declarer) {
+  if (soloists.includes(seat)) {
     const real = legal.filter(x => !isJoker(x));
     if (!s.trick.length) return low(real.length ? real : legal); // jokerne gemmes til nødstilfælde
     const led = ledSuitOf(s.trick);
@@ -244,11 +258,30 @@ function playNolo(s, seat, legal) {
     }
     return high(safe.length ? safe : legal); // renonce: kom af med det farligste
   }
-  // Modspillere vil tvinge melderen til at tage stik.
-  if (!s.trick.length) return low(legal);
-  const declarerPlayed = s.trick.some(x => x.seat === c.declarer);
-  if (declarerPlayed && trickWinnerOf(s.trick, null, true) === c.declarer) {
-    return high(losing.length ? losing : legal); // lad melderen beholde stikket
+  // Modspillere vil tvinge melderen til at tage stik: spil ud i en kulør, melderen stadig har
+  // (ellers smider melderen bare sine farligste kort af).
+  if (!s.trick.length) {
+    const voids = soloists.map(x => voidSuits(s, x));
+    const real = legal.filter(x => !isJoker(x));
+    const noneVoid = real.filter(x => voids.every(v => !v.has(suitOf(x))));
+    const someHave = real.filter(x => voids.some(v => !v.has(suitOf(x))));
+    return low(noneVoid.length ? noneVoid : someHave.length ? someHave : legal);
+  }
+  const declarerPlayed = s.trick.some(x => soloists.includes(x.seat));
+  const winner = trickWinnerOf(s.trick, null, true);
+  if (declarerPlayed && soloists.includes(winner)) {
+    return high(losing.length ? losing : legal); // lad nolo-spilleren beholde stikket
+  }
+  // Udspillet bør gå til spilleren lige før melderen: så skal melderen bekende som nummer to
+  // uden at kende resten af stikket og må typisk bruge et lavt kort.
+  const beforeDeclarer = (c.declarer + 3) % 4;
+  if (declarerPlayed) {
+    if (seat === beforeDeclarer) {
+      const winning = legal.filter(x => winsWith(s, seat, x));
+      if (winning.length) return low(winning); // tag stikket billigst muligt og få udspillet
+    } else if (winner === beforeDeclarer && losing.length) {
+      return high(losing); // lad spilleren før melderen beholde stikket
+    }
   }
   return low(legal);
 }
@@ -256,16 +289,20 @@ function playNolo(s, seat, legal) {
 // ---------- Indgang ----------
 
 // Returnerer næste handling for AI-spilleren på `seat`, eller null hvis det ikke er dens tur.
-export function decide(s, seat, profileKey) {
-  const p = PROFILES[profileKey] ?? PROFILES.normal;
+// `profile` er en profilnøgle eller et profilobjekt (bruges i test, fx uden tilfældige fejl).
+export function decide(s, seat, profile) {
+  const p = typeof profile === 'object' ? profile : PROFILES[profile] ?? PROFILES.normal;
   if (s.turn !== seat) return null;
   switch (s.phase) {
     case 'bidding': return { type: 'bid', bid: chooseBid(s, seat, p) };
     case 'contract': return { type: 'contract', ...chooseContract(s, seat) };
     case 'halveTrump': return { type: 'halveTrump', trump: bestTrump(s.hands[seat], suitOf(s.contract.ace)).suit };
     case 'vip': return { type: 'vip', accept: acceptVip(s, seat, p) };
-    case 'exchange':
-      return s.contract.tookKat ? { type: 'discard', cards: chooseDiscards(s, seat) } : { type: 'exchange', take: true };
+    case 'exchange': {
+      if (s.contract.tookKat) return { type: 'discard', cards: chooseDiscards(s, seat) };
+      // Den der gik med på nolo, bytter med de kort, melderen lagde – typisk høje kort – så nej tak.
+      return { type: 'exchange', take: !(s.contract.exchanges ?? []).some(x => x.took) };
+    }
     case 'play': return { type: 'play', card: playCard(s, seat, p) };
     default: return null;
   }

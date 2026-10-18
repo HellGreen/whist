@@ -245,3 +245,126 @@ test('melderens klient ser ikke makker, før makker-esset er spillet', () => {
   G.play(s, 2, 'C14');
   assert.equal(G.view(s, 0).contract.partner, 2); // afsløret i det øjeblik esset spilles
 });
+
+test('AI ved nolo: modspillere spiller ikke ud i en kulør, melderen er renonce i', async () => {
+  const { decide, voidSuits, PROFILES } = await import('../server/ai.js');
+  const flawless = { ...PROFILES.normal, gamble: 0 }; // uden tilfældige fejl, så strategien måles
+  const rulesAll = { bids: Object.fromEntries(Object.keys(rules.bids).map(k => [k, true])) };
+  let checked = 0;
+  for (let i = 0; i < 600; i++) {
+    const s = G.newRound(i % 4, rulesAll);
+    for (let guard = 0; guard < 200 && !['passed', 'roundEnd'].includes(s.phase); guard++) {
+      const seat = s.turn;
+      const d = decide(s, seat, flawless);
+      const c = s.contract;
+      if (d.type === 'play' && c.bid.nolo && G.soloistsOf(c).length === 1 && seat !== c.declarer && !s.trick.length) {
+        const voids = voidSuits(s, c.declarer);
+        const alternatives = G.legalCards(s, seat).filter(x => !G.isJoker(x) && !voids.has(x[0]));
+        if (voids.size && alternatives.length) {
+          checked++;
+          assert.ok(!voids.has(d.card[0]), `spillede ${d.card} ud, men melderen er renonce i ${[...voids]}`);
+        }
+      }
+      ({ bid: () => G.bid(s, seat, d.bid), contract: () => G.chooseContract(s, seat, d), halveTrump: () => G.halveTrump(s, seat, d.trump),
+        vip: () => G.vip(s, seat, d.accept), exchange: () => G.exchange(s, seat, d.take), discard: () => G.discard(s, seat, d.cards),
+        play: () => G.play(s, seat, d.card) })[d.type]();
+    }
+  }
+  assert.ok(checked > 0, 'testen ramte ingen relevante situationer');
+});
+
+test('AI ved nolo: modspillerne giver udspillet til spilleren lige før melderen', async () => {
+  const { decide, PROFILES } = await import('../server/ai.js');
+  const flawless = { ...PROFILES.normal, gamble: 0 };
+  const rulesAll = { bids: Object.fromEntries(Object.keys(rules.bids).map(k => [k, true])) };
+  let grabbed = 0, kept = 0;
+  for (let i = 0; i < 600; i++) {
+    const s = G.newRound(i % 4, rulesAll);
+    for (let guard = 0; guard < 200 && !['passed', 'roundEnd'].includes(s.phase); guard++) {
+      const seat = s.turn, d = decide(s, seat, flawless), c = s.contract;
+      if (d.type === 'play' && c.bid.nolo && G.soloistsOf(c).length === 1 && seat !== c.declarer && s.trick.some(x => x.seat === c.declarer)) {
+        const before = (c.declarer + 3) % 4;
+        const winner = G.trickWinnerOf(s.trick, null, true);
+        const wins = card => G.trickWinnerOf([...s.trick, { seat, card }], null, true) === seat;
+        if (winner !== c.declarer && seat === before && G.legalCards(s, seat).some(wins)) {
+          grabbed++;
+          assert.ok(wins(d.card), 'spilleren før melderen burde tage stikket');
+        }
+        if (winner === before && seat !== before && G.legalCards(s, seat).some(x => !wins(x))) {
+          kept++;
+          assert.ok(!wins(d.card), 'modspilleren burde ikke overtage stikket fra spilleren før melderen');
+        }
+      }
+      ({ bid: () => G.bid(s, seat, d.bid), contract: () => G.chooseContract(s, seat, d), halveTrump: () => G.halveTrump(s, seat, d.trump),
+        vip: () => G.vip(s, seat, d.accept), exchange: () => G.exchange(s, seat, d.take), discard: () => G.discard(s, seat, d.cards),
+        play: () => G.play(s, seat, d.card) })[d.type]();
+    }
+  }
+  assert.ok(grabbed > 0 && kept > 0, `for få situationer: ${grabbed}/${kept}`);
+});
+
+test('gå med: flere spiller sol hver for sig, og katten går videre', async () => {
+  const { scoreRound } = await import('../server/scoring.js');
+  const s = fixedRound(3); // forhånd = plads 0
+  G.bid(s, 0, { nolo: 'sol' });
+  assert.throws(() => G.bid(s, 1, { nolo: 'sol' }), /højere/); // sol kan ikke holdes
+  assert.ok(G.canJoin(s, 1));
+  G.bid(s, 1, { join: true });
+  G.bid(s, 2, null);
+  G.bid(s, 3, null);
+  assert.equal(s.phase, 'exchange');
+  assert.deepEqual(s.contract.soloists, [0, 1]);
+  assert.equal(s.turn, 0);
+  G.exchange(s, 0, true);
+  G.discard(s, 0, ['S14', 'S13', 'S12']);
+  assert.equal(s.turn, 1); // den der gik med, bytter bagefter – med de kort melderen lagde
+  G.exchange(s, 1, true);
+  assert.ok(['S14', 'S13', 'S12'].every(x => s.hands[1].includes(x)));
+  G.discard(s, 1, ['S14', 'S13', 'S12']);
+  assert.equal(s.phase, 'play');
+
+  // Point (sol = 1): begge hjem -> hver modspiller betaler 1 til hver vinder.
+  const c = { declarer: 0, soloists: [0, 1], bid: { nolo: 'sol' } };
+  assert.deepEqual(scoreRound(c, [0, 1, 6, 6]).points, [2, 2, -2, -2]);
+  // Én hjem, én ned -> de tre tabere betaler til vinderen.
+  assert.deepEqual(scoreRound(c, [1, 2, 5, 5]).points, [3, -1, -1, -1]);
+  // Begge ned -> hver betaler til hver modspiller.
+  assert.deepEqual(scoreRound(c, [2, 3, 4, 4]).points, [-2, -2, 2, 2]);
+  // Én nolo-spiller: almindelig afregning.
+  assert.deepEqual(scoreRound({ declarer: 0, bid: { nolo: 'sol' } }, [1, 4, 4, 4]).points, [3, -1, -1, -1]);
+});
+
+test('gå med: et overbud nulstiller dem der gik med, og runden slutter først når alle er gået ned', () => {
+  const s = fixedRound(3);
+  G.bid(s, 0, { nolo: 'sol' });
+  G.bid(s, 1, { join: true });
+  G.bid(s, 2, { n: 9, suffix: 'gode' }); // overbud
+  assert.deepEqual(s.high.joined, []);
+  assert.equal(s.turn, 3);
+  G.bid(s, 3, null);
+  G.bid(s, 0, null);
+  G.bid(s, 1, null);
+  assert.equal(s.contract.declarer, 2);
+  assert.equal(s.contract.soloists, undefined);
+});
+
+test('AI kan gå med på nolo, og runder med flere nolo-spillere spilles færdige', async () => {
+  const { decide } = await import('../server/ai.js');
+  const rulesAll = { bids: Object.fromEntries(Object.keys(rules.bids).map(k => [k, true])) };
+  let several = 0;
+  for (let i = 0; i < 800; i++) {
+    const s = G.newRound(i % 4, rulesAll);
+    for (let guard = 0; guard < 300 && !['passed', 'roundEnd'].includes(s.phase); guard++) {
+      const seat = s.turn, d = decide(s, seat, 'risky');
+      ({ bid: () => G.bid(s, seat, d.bid), contract: () => G.chooseContract(s, seat, d), halveTrump: () => G.halveTrump(s, seat, d.trump),
+        vip: () => G.vip(s, seat, d.accept), exchange: () => G.exchange(s, seat, d.take), discard: () => G.discard(s, seat, d.cards),
+        play: () => G.play(s, seat, d.card) })[d.type]();
+    }
+    assert.ok(['passed', 'roundEnd'].includes(s.phase));
+    if (s.phase === 'roundEnd' && s.result.soloists?.length > 1) {
+      several++;
+      assert.equal(s.result.points.reduce((a, b) => a + b), 0); // nulsum
+    }
+  }
+  assert.ok(several > 0, 'ingen AI gik med på nolo');
+});
