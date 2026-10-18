@@ -408,7 +408,8 @@ table.rounds tr:not(.lost) td.result { color: var(--accent); }
 .tab.active { color: var(--ink); border-bottom-color: var(--accent); }
 .hist-bar select { font: inherit; padding: 6px 8px; margin-bottom: 6px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; max-width: 100%; }
 .hist-chart { position: relative; }
-.hist-chart svg { width: 100%; height: auto; display: block; }
+/* Højden begrænses, så grafen altid kan være i vinduet uden scroll; den skaleres og centreres. */
+.hist-chart svg { width: 100%; height: auto; max-height: calc(90vh - 210px); display: block; }
 .hist-chart .gridline { stroke: var(--line); stroke-width: 1; }
 .hist-chart .zero { stroke: var(--muted); stroke-width: 1; }
 .hist-chart .axis { fill: var(--muted); font-size: 12px; }

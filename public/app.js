@@ -1129,8 +1129,8 @@ document.addEventListener('mouseover', e => {
   tip.innerHTML = `<b>Runde ${r.no}</b> · ${esc(r.label)} ${r.won ? '✔' : '✘'}<br>
     <span class="muted">Melder ${esc(r.declarer)}${r.partner && r.partner !== '–' ? `, makker ${esc(r.partner)}` : ''}</span>
     ${rows.map(x => `<div><i style="background:var(--series-${x.pi + 1})"></i>${esc(x.name)} <b>${fmtPts(x.v)}</b></div>`).join('')}`;
-  const svg = chart.querySelector('svg').getBoundingClientRect(), box = chart.getBoundingClientRect();
-  const px = svg.left - box.left + (cx / 1000) * svg.width;
+  const band = hit.getBoundingClientRect(), box = chart.getBoundingClientRect();
+  const px = band.left + band.width / 2 - box.left;
   tip.style.left = `${px + 14 + 220 > box.width ? px - 234 : px + 14}px`;
   tip.style.top = '40px';
   tip.hidden = false;
