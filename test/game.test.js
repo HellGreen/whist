@@ -86,18 +86,20 @@ test('makker-es og jokere: joker kan ikke spilles ud i første stik, men vinder 
   assert.equal(s.lastTrick.winner, 0);
 });
 
-test('jokere: en joker der ikke spilles ud har ingen værdi, men må altid lægges', () => {
+test('jokere: kan man bekende kulør, må man ikke lægge en joker; ellers har den ingen værdi', () => {
   const s = fixedRound(3);
   playTo(s, 0, { n: 7, suffix: null }, { trump: 'C', ace: 'H14' });
   G.exchange(s, 0, false);
   s.hands[1].push('J1');
   s.hands[1].push('S3');
   G.play(s, 0, 'S5');
-  assert.ok(G.legalCards(s, 1).includes('J1')); // må lægges, selvom den kan bekende spar
-  G.play(s, 1, 'J1');
-  G.play(s, 2, 'C2'); // trumf
+  assert.deepEqual(G.legalCards(s, 1), ['S3']); // skal bekende spar – jokeren er ikke tilladt
+  G.play(s, 1, 'S3');
+  s.hands[2].push('J2'); // plads 2 har ingen spar og må derfor lægge jokeren
+  assert.ok(G.legalCards(s, 2).includes('J2'));
+  G.play(s, 2, 'J2');
   G.play(s, 3, 'D2');
-  assert.equal(s.lastTrick.winner, 2);
+  assert.equal(s.lastTrick.winner, 0); // jokeren har ingen værdi, når den ikke spilles ud
 });
 
 test('esmakker skal spille esset, når kuløren spilles ud', () => {

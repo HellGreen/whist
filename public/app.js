@@ -239,7 +239,7 @@ function rulesBox(t, editable) {
       ${order ? `<li>Påhæng fra lavest til højest: <b>${esc(order)}</b>${t.rules.bids.gode && t.rules.bids.halve ? ' – fx slår gode halve.' : '.'}</li>` : ''}
       ${nolos.map(x => `<li>${esc(x.label)} ligger mellem ${x.level} og ${x.level} med påhæng – den slås af ${x.level}+.</li>`).join('')}
       <li>Melderen kalder et es (ikke i trumf) for at finde sin makker. Kalder man et es, man selv har, er man selvmakker og får dobbelte point.</li>
-      <li>En joker spillet ud som første kort vinder altid stikket, og de andre må lægge hvad som helst. Spilles den ikke ud, har den ingen værdi, men den må altid lægges. Jokere kan ikke spilles ud i første stik.</li>
+      <li>En joker spillet ud som første kort vinder altid stikket, og de andre må lægge hvad som helst. Spilles den ikke ud, har den ingen værdi og må kun lægges, når man ikke kan bekende kulør. Jokere kan ikke spilles ud i første stik.</li>
       <li>Man tager enten hele katten og lægger 3 kort, eller beholder sine kort.</li>
     </ul>
     <details><summary>Point</summary>
