@@ -21,6 +21,7 @@ const DELAY = Number(process.env.WHIST_DELAY_FACTOR ?? 1);
 const atLeast = (ms, min) => (DELAY < 0.2 ? ms : Math.max(min, ms));
 const RESULT_DELAY_MS = atLeast(2_500 * DELAY, 4_400); // pause efter sidste kort, før scoren vises
 const RESULT_SHOW_MS = atLeast(5_000 * DELAY, 5_000); // så længe scoren vises, før næste runde starter
+const AUTO_SAVE_MS = 10 * 60_000 * DELAY; // er alle spillere væk så længe under et spil, gemmes bordet
 const RULES_INFO = {
   ...rulesInfo(),
   aiProfiles: Object.values(AI.PROFILES).map(({ key, label, desc }) => ({ key, label, desc })),
@@ -68,6 +69,7 @@ function newTable(ownerId, saved = null) {
     nextRoundAt: 0,
     turnSince: Date.now(), // hvornår den nuværende tur begyndte (til betænkningstid)
     pausedAt: 0,
+    autoSaveTimer: null,
   };
   for (const id of t.seats) {
     const profile = id && db.botProfile(id);
@@ -85,6 +87,7 @@ const snapshot = () => ({ seats: table.seats, game: table.game });
 function closeTable() {
   clearInterval(table.timer);
   clearTimeout(table.roundTimer);
+  clearTimeout(table.autoSaveTimer);
   table = null;
 }
 
@@ -160,8 +163,29 @@ function startGame() {
   }
 }
 
+// Er alle (menneskelige) spillere ved bordet væk i AUTO_SAVE_MS under et spil, gemmes bordet,
+// så det kan genoptages fra "Gemte borde". Kommer én tilbage inden, afbrydes nedtællingen.
+function scheduleAutoSave() {
+  const t = table;
+  if (t.autoSaveTimer || !t.seats.every(id => isBot(id) || !isOnline(id))) return;
+  t.autoSaveTimer = setTimeout(() => {
+    t.autoSaveTimer = null;
+    if (table !== t || !inGame() || t.seats.some(id => !isBot(id) && isOnline(id))) return;
+    db.saveSession(t.sessionId, snapshot());
+    closeTable();
+    console.log('Bordet blev gemt automatisk, fordi alle spillere var væk');
+    push();
+  }, AUTO_SAVE_MS);
+}
+
+function cancelAutoSave() {
+  clearTimeout(table?.autoSaveTimer);
+  if (table) table.autoSaveTimer = null;
+}
+
 function wentOffline(id) {
   if (seatOf(id) < 0) return;
+  if (inGame()) scheduleAutoSave();
   if (table.status === 'playing') return setPaused(true);
   if (table.status === 'paused') return;
   table.ready.delete(id);
@@ -417,6 +441,7 @@ io.on('connection', socket => {
     clearTimeout(entry.leaveTimer);
     entry.sockets.add(socket);
     socket.data.playerId = p.id;
+    if (seatOf(p.id) >= 0) cancelAutoSave();
     if (table?.status === 'paused' && table.seats.every(isOnline)) setPaused(false);
     return { id: p.id, name: p.name };
   });

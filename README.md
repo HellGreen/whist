@@ -48,7 +48,7 @@ Miljøvariabler:
 |------------|------------------|------------------------|
 | `PORT`     | `3000`           | Port serveren lytter på |
 | `WHIST_DB` | `data/whist.db`  | Sti til databasen       |
-| `WHIST_DELAY_FACTOR` | `1` | Gang alle ventetider (AI, score) med dette tal – fx `0.05` under test |
+| `WHIST_DELAY_FACTOR` | `1` | Gang alle ventetider (AI, score, automatisk gem) med dette tal – fx `0.05` under test |
 
 ## Drift på Linux-server
 
@@ -196,6 +196,8 @@ sudo systemctl start whist
 
 Databasen ligger i `data/whist.db`. Tag backup af den mappe. Spillets tilstand gemmes efter hver handling, så et
 spil kan genoptages præcis hvor det slap – også efter en servergenstart (det ligger så under "Gemte borde").
+Er alle spillere ved bordet væk i 10 minutter under et spil (lukket fane, mistet forbindelse), gemmes bordet
+automatisk og kan genoptages derfra. Kommer én tilbage inden, fortsætter spillet som normalt.
 
 ## Database
 
