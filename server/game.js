@@ -42,7 +42,7 @@ export function newRound(dealer, rules, deck = shuffle(makeDeck())) {
   const hands = [0, 1, 2, 3].map(i => deck.slice(i * 13, i * 13 + 13));
   return {
     rules, dealer, forehand,
-    phase: 'bidding', // bidding | passed | contract | halveTrump | vip | exchange | play | roundEnd
+    phase: 'bidding', // bidding | passed | contract | halveTrump | vip | exchange | cover | play | roundEnd
     turn: forehand,
     hands,
     kat: deck.slice(52),
@@ -152,6 +152,7 @@ function finishBidding(s) {
     selfCall: false, katPartner: false,
     vipFlips: 0, vipCards: [],
     exchanger: null, tookKat: false, katCards: [],
+    covered: null, coveredPlayed: null, // fordækt kort (se cover)
   };
   s.turn = seat;
   if (b.nolo) {
@@ -269,8 +270,39 @@ function startPlay(s) {
     c.partner = holder < 0 ? c.declarer : holder;
     c.katPartner = c.partner === c.declarer && !c.selfCall;
   }
+  if (mayCover(s)) {
+    s.phase = 'cover';
+    s.turn = c.declarer;
+    return;
+  }
+  beginTricks(s);
+}
+
+function beginTricks(s) {
   s.phase = 'play';
   s.turn = s.forehand;
+}
+
+// ---------- Fordækt kort ----------
+
+// Har melderen ingen kort i makker-essets kulør, kan vedkommende inden første udspil lægge et
+// vilkårligt kort fordækt. Det tæller som laveste kort i essets kulør og må kun bruges til at
+// spille ud i kuløren eller lægges, første gang kuløren spilles. Det vises aldrig for bordet.
+function mayCover(s) {
+  const c = s.contract;
+  if (!c.ace) return false;
+  return !s.hands[c.declarer].some(x => !isJoker(x) && suitOf(x) === suitOf(c.ace));
+}
+
+export function cover(s, seat, card) {
+  expectTurn(s, seat, 'cover');
+  const c = s.contract;
+  if (card != null) {
+    if (!s.hands[seat].includes(card)) throw new UserError('Vælg et kort fra din hånd');
+    s.hands[seat] = s.hands[seat].filter(x => x !== card);
+    c.covered = card;
+  }
+  beginTricks(s);
 }
 
 // ---------- Stikspil ----------
@@ -281,23 +313,29 @@ export const soloistsOf = c => c.soloists ?? [c.declarer]; // nolo-spillerne (ge
 // Jokere: spilles en joker ud som første kort, vinder den stikket, og de andre må lægge
 // hvad som helst (der er ingen kulør at bekende). Ellers har en joker ingen værdi og må kun
 // lægges, når man ikke kan bekende kulør. Jokere må ikke spilles ud i første stik.
+// Et fordækt kort i et stik har `as` = makker-essets kulør og tæller som laveste kort i den.
+export const isJokerPlay = p => !p.as && isJoker(p.card);
+export const playSuit = p => (isJokerPlay(p) ? null : p.as ?? suitOf(p.card));
+
 export function ledSuitOf(trick) {
-  const firstReal = trick.find(p => !isJoker(p.card));
-  return firstReal ? suitOf(firstReal.card) : null;
+  const firstReal = trick.find(p => !isJokerPlay(p));
+  return firstReal ? playSuit(firstReal) : null;
 }
 const ledSuit = s => ledSuitOf(s.trick);
 
 export function legalCards(s, seat) {
   if (s.phase !== 'play' || s.turn !== seat) return [];
-  const hand = s.hands[seat];
+  const hand = s.hands[seat], c = s.contract;
+  const covered = seat === c.declarer ? c.covered : null;
+  if (covered && !hand.length) return [covered]; // kun det fordækte kort tilbage
   if (!s.trick.length) {
     const firstTrick = !(s.trickWinners?.length ?? s.tricks.reduce((a, b) => a + b, 0));
-    return firstTrick ? hand.filter(x => !isJoker(x)) : [...hand];
+    return [...(firstTrick ? hand.filter(x => !isJoker(x)) : hand), ...(covered ? [covered] : [])];
   }
-  if (isJoker(s.trick[0].card)) return [...hand]; // joker spillet ud: frit valg
+  if (isJokerPlay(s.trick[0])) return [...hand]; // joker spillet ud: frit valg
   const led = ledSuit(s);
   if (!led) return [...hand];
-  const c = s.contract;
+  if (covered && led === suitOf(c.ace)) return [covered]; // det fordækte kort bekender essets kulør
   // Esmakker skal spille makker-esset, når dets kulør spilles ud.
   if (c.ace && seat !== c.declarer && hand.includes(c.ace) && suitOf(c.ace) === led) return [c.ace];
   const follow = hand.filter(x => !isJoker(x) && suitOf(x) === led);
@@ -307,15 +345,15 @@ export function legalCards(s, seat) {
 // Vinderen af et (evt. ufærdigt) stik, eller null hvis intet kort kan vinde endnu.
 // aceLow: i nolo-spil (sol osv.) tæller esset som 1.
 export function trickWinnerOf(trick, trump, aceLow = false) {
-  const rank = card => (aceLow && rankOf(card) === 14 ? 1 : rankOf(card));
-  const highest = plays => plays.reduce((a, b) => (rank(b.card) > rank(a.card) ? b : a));
-  if (trick.length && isJoker(trick[0].card)) return trick[0].seat; // joker spillet ud vinder altid
+  const rank = p => (p.as ? 0 : aceLow && rankOf(p.card) === 14 ? 1 : rankOf(p.card));
+  const highest = plays => plays.reduce((a, b) => (rank(b) > rank(a) ? b : a));
+  if (trick.length && isJokerPlay(trick[0])) return trick[0].seat; // joker spillet ud vinder altid
   if (trump) {
-    const trumps = trick.filter(p => !isJoker(p.card) && suitOf(p.card) === trump);
+    const trumps = trick.filter(p => playSuit(p) === trump);
     if (trumps.length) return highest(trumps).seat;
   }
   const led = ledSuitOf(trick);
-  const following = trick.filter(p => !isJoker(p.card) && suitOf(p.card) === led);
+  const following = trick.filter(p => playSuit(p) === led);
   return following.length ? highest(following).seat : null;
 }
 const trickWinner = s => trickWinnerOf(s.trick, trumpSuit(s), !!s.contract.bid.nolo);
@@ -324,10 +362,16 @@ export function play(s, seat, card) {
   expectTurn(s, seat, 'play');
   if (!legalCards(s, seat).includes(card)) throw new UserError('Det kort må du ikke spille nu');
   const c = s.contract;
+  const entry = { seat, card };
+  if (seat === c.declarer && card === c.covered) {
+    entry.as = suitOf(c.ace);
+    c.coveredPlayed = card;
+    c.covered = null;
+  }
   s.hands[seat] = s.hands[seat].filter(x => x !== card);
   if (!s.trick.length) s.lastTrick = null;
-  s.trick.push({ seat, card });
-  (s.plays ??= []).push({ seat, card });
+  s.trick.push(entry);
+  (s.plays ??= []).push(entry);
   if (c.bid.nolo && noloDef(c.bid.nolo).open) s.openHand = true;
   if (card === c.ace) {
     c.partnerRevealed = true;
@@ -372,6 +416,7 @@ export function replayOf(s) {
       exchanger: c.exchanges?.[0]?.seat ?? c.exchanger, tookKat: c.exchanges?.[0]?.took ?? c.tookKat,
       discards: c.exchanges?.[0]?.discards ?? (c.tookKat ? s.discards : []),
       exchanges: c.exchanges, soloists: c.bid.nolo ? soloistsOf(c) : undefined,
+      coveredPlayed: c.coveredPlayed,
     },
     plays: s.plays,
     trickWinners: s.trickWinners,
@@ -383,8 +428,11 @@ export function replayOf(s) {
 function lastCompleted(s) {
   const n = s.trickWinners?.length ?? 0;
   if (!n || !s.plays) return null;
-  return { no: n, cards: s.plays.slice((n - 1) * 4, n * 4).map(({ seat, card }) => ({ seat, card })), winner: s.trickWinners[n - 1] };
+  return { no: n, cards: s.plays.slice((n - 1) * 4, n * 4).map(hideCovered), winner: s.trickWinners[n - 1] };
 }
+
+// Det fordækte kort vises med bagsiden opad ('X') – også efter det er spillet.
+const hideCovered = ({ seat, card, as }) => (as ? { seat, card: 'X', covered: true } : { seat, card });
 
 // ---------- Visning for én spiller (skjuler andres kort) ----------
 
@@ -415,10 +463,13 @@ export function view(s, seat) {
       soloists: c.bid.nolo ? soloistsOf(c) : undefined,
       // Hvem der har byttet før (ikke hvilke kort – dem ser kun den, der tager dem).
       exchanges: (c.exchanges ?? []).map(({ seat: who, took }) => ({ seat: who, took })),
+      hasCovered: !!c.covered, // ligger der et fordækt kort, som ikke er spillet endnu
+      covered: seat === c.declarer ? c.covered : null,
+      coveredPlayed: s.phase === 'roundEnd' || seat === c.declarer ? c.coveredPlayed : null,
     },
     katCount: s.kat.length,
-    trick: s.trick,
-    lastTrick: s.lastTrick,
+    trick: s.trick.map(hideCovered),
+    lastTrick: s.lastTrick && { ...s.lastTrick, cards: s.lastTrick.cards.map(hideCovered) },
     lastCompleted: lastCompleted(s),
     tricks: s.tricks,
     // Bordlægger: nolo-spillernes kort ligger åbent efter første udspil.

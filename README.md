@@ -257,8 +257,12 @@ valgt følgende, som er bekræftet (alt kan justeres i `server/bids.js`, `server
   den ikke ud, har den ingen værdi og må kun lægges, når man ikke kan bekende kulør. Jokere kan ikke spilles ud i
   første stik.
 - **Katten:** man tager hele katten og lægger 3 kort, eller beholder sine kort.
+- **Fordækt kort:** har melderen ingen kort i makker-essets kulør (efter katten), kan vedkommende inden første
+  udspil lægge et vilkårligt kort fordækt – også en joker. Det er frivilligt. Kortet tæller som laveste kort i
+  essets kulør og må kun bruges til at spille ud i kuløren (til makker-esset) eller lægges, første gang kuløren
+  spilles – aldrig smides på en anden kulør. Det vises aldrig for bordet, kun i resultatet efter runden.
 - **Esset i nolo:** i sol, ren sol, bordlægger og ren bordlægger tæller esset som 1 (laveste kort).
 - **Point:** vundet = grundpoint × (1 + overstik), tabt = grundpoint × manglende stik. Påhæng ×2. Vip'1/2/3 ×2/×4/×8
   (klør vendt ×2). Selvmakker (kaldt eget es) ×2. Esset i katten giver ingen fordobling. Med makker får eller betaler
   begge makkere pointene. Spiller man alene, betaler hver modspiller, og melderen får 3×.
-- Endnu ikke understøttet: fordækt kort og kald af konge ved fire esser (se `todo.md`).
+- Endnu ikke understøttet: kald af konge ved fire esser (se `todo.md`).

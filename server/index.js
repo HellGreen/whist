@@ -302,6 +302,7 @@ function botAct(id, d) {
       case 'vip': return G.vip(g, seat, d.accept);
       case 'exchange': return G.exchange(g, seat, d.take);
       case 'discard': return G.discard(g, seat, d.cards);
+      case 'cover': return G.cover(g, seat, d.card);
       case 'play': return G.play(g, seat, d.card);
       default: throw new Error(`Ukendt AI-handling ${d.type}`);
     }
@@ -316,6 +317,7 @@ function fallbackDecision(g, seat) {
     case 'halveTrump': return { type: 'halveTrump', trump: G.SUITS.find(s => s !== g.contract.ace[0]) };
     case 'vip': return { type: 'vip', accept: true };
     case 'exchange': return { type: 'exchange', take: false };
+    case 'cover': return { type: 'cover', card: null };
     default: return { type: 'play', card: G.legalCards(g, seat)[0] };
   }
 }
@@ -507,6 +509,7 @@ io.on('connection', socket => {
   on('game:vip', game((g, seat, accept) => G.vip(g, seat, !!accept)));
   on('game:exchange', game((g, seat, take) => G.exchange(g, seat, !!take)));
   on('game:discard', game((g, seat, cards) => G.discard(g, seat, cards)));
+  on('game:cover', game((g, seat, card) => G.cover(g, seat, card ?? null)));
   on('game:play', game((g, seat, card) => G.play(g, seat, card)));
 
   on('history:list', () => db.sessionList());

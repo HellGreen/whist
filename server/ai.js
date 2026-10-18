@@ -2,7 +2,7 @@
 // (meldinger, spillede kort, kendt makker), og træffer valg ud fra simple tommelfingerregler.
 import { bidRank } from './bids.js';
 import {
-  ACES, SUITS, allowedBids, canIronHand, canJoin, isJoker, ledSuitOf, legalCards, rankOf, soloistsOf, suitOf, trickWinnerOf, trumpSuit,
+  ACES, SUITS, allowedBids, canIronHand, canJoin, isJoker, isJokerPlay, ledSuitOf, playSuit, legalCards, rankOf, soloistsOf, suitOf, trickWinnerOf, trumpSuit,
 } from './game.js';
 
 export const PROFILES = {
@@ -119,6 +119,15 @@ function chooseBid(s, seat, p) {
   return options[0] ?? (canIronHand(s, seat) ? { iron: true } : null);
 }
 
+// Fordækt kort: det mindst værdifulde kort uden for trumf (laveste i den korteste kulør).
+function chooseCover(s, seat) {
+  const hand = s.hands[seat], trump = trumpSuit(s);
+  const side = hand.filter(x => !isJoker(x) && suitOf(x) !== trump);
+  if (!side.length) return null;
+  const len = x => side.filter(y => suitOf(y) === suitOf(x)).length;
+  return side.sort((a, b) => len(a) - len(b) || rankOf(a) - rankOf(b))[0];
+}
+
 // Kulørens vægt: summen af egne kort i kuløren (2–10 som tallet, B=11, D=12, K=13, E=14).
 export const suitWeight = (hand, suit) => ranksIn(hand, suit).reduce((a, b) => a + b, 0);
 
@@ -190,7 +199,7 @@ function teamView(s, seat) {
 }
 
 function seenCards(s, seat) {
-  const seen = new Set((s.plays ?? []).map(p => p.card));
+  const seen = new Set((s.plays ?? []).filter(p => !p.as).map(p => p.card)); // fordækte kort ses ikke
   for (const c of s.hands[seat]) seen.add(c);
   if (s.contract.exchanger === seat) for (const c of s.discards) seen.add(c);
   return seen;
@@ -209,9 +218,9 @@ export function voidSuits(s, seat) {
   const voids = new Set(), plays = s.plays ?? [];
   for (let i = 0; i < plays.length; i += 4) {
     const trick = plays.slice(i, i + 4);
-    if (isJoker(trick[0].card)) continue; // joker spillet ud: ingen kulør at bekende
-    const led = suitOf(trick[0].card), own = trick.find(p => p.seat === seat);
-    if (own && (isJoker(own.card) || suitOf(own.card) !== led)) voids.add(led);
+    if (isJokerPlay(trick[0])) continue; // joker spillet ud: ingen kulør at bekende
+    const led = playSuit(trick[0]), own = trick.find(p => p.seat === seat);
+    if (own && playSuit(own) !== led) voids.add(led);
   }
   return voids;
 }
@@ -221,8 +230,14 @@ function winsWith(s, seat, card) {
 }
 
 function playCard(s, seat, p) {
-  const legal = legalCards(s, seat);
+  let legal = legalCards(s, seat);
   if (legal.length === 1) return legal[0];
+  const covered = seat === s.contract.declarer ? s.contract.covered : null;
+  if (covered) {
+    // Melderen spiller det fordækte kort ud for at finde makker – ellers gemmes det til kuløren.
+    if (!s.trick.length && !s.contract.partnerRevealed) return covered;
+    legal = legal.filter(x => x !== covered);
+  }
   if (Math.random() < p.gamble) return pick(legal);
   return s.contract.bid.nolo ? playNolo(s, seat, legal) : playTrump(s, seat, legal);
 }
@@ -333,6 +348,7 @@ export function decide(s, seat, profile) {
       // Den der gik med på nolo, bytter med de kort, melderen lagde – typisk høje kort – så nej tak.
       return { type: 'exchange', take: !(s.contract.exchanges ?? []).some(x => x.took) };
     }
+    case 'cover': return { type: 'cover', card: chooseCover(s, seat) };
     case 'play': return { type: 'play', card: playCard(s, seat, p) };
     default: return null;
   }

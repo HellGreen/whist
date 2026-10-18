@@ -223,6 +223,9 @@ button.suit-btn.selected.red { color: var(--red); }
 .my-hand { position: absolute; left: 50%; bottom: 74px; transform: translateX(-50%); display: flex; z-index: 6; }
 .my-hand .card + .card { margin-left: -39px; }
 .my-hand .card:not(.classic) + .card:not(.classic) { margin-left: -31px; }
+.my-hand .covered-card { position: relative; margin-left: 14px; }
+.my-hand .covered-card > span { position: absolute; left: 0; right: 0; top: -20px; text-align: center; font-size: 12px; font-weight: bold;
+  color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .7); }
 .my-hand button.card:hover:not(:disabled) { z-index: 2; }
 
 /* ---------- Kort ---------- */

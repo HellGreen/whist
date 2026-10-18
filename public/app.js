@@ -17,7 +17,7 @@ const STATUS_LABEL = { active: 'i gang', saved: 'gemt', ended: 'afsluttet' };
 
 let state = null;
 // Lokale valg der ikke findes på serveren endnu (nulstilles når fasen skifter).
-let ui = { key: '', trump: null, ace: null, discard: [] };
+let ui = { key: '', trump: null, ace: null, discard: [], cover: null };
 let modal = null; // { type: 'standings' | 'html' | 'history' | 'replay', ... }
 let nextRoundDeadline = 0;
 
@@ -278,6 +278,7 @@ function cardFace(card) {
 }
 
 function cardHtml(card, { action, disabled, selected, small, fromKat } = {}) {
+  if (card === 'X') return backHtml(small); // fordækt kort: vises aldrig for bordet
   const cls = ['card', cardTheme(), isRed(card) && 'red', card[0] === 'J' && 'joker', small && 'small',
     selected && 'selected', fromKat && 'fromkat'].filter(Boolean).join(' ');
   return action
@@ -350,7 +351,7 @@ function contractCorner(c, tricks, names = null) {
 function gameScreen(t) {
   const g = t.game, me = t.mySeat;
   const key = `${t.rounds.length}|${g.dealer}|${g.phase}|${g.contract?.tookKat}`;
-  if (key !== ui.key) ui = { key, trump: null, ace: null, discard: [] };
+  if (key !== ui.key) ui = { key, trump: null, ace: null, discard: [], cover: null };
   const rel = seat => POS[(seat - me + 4) % 4];
   const isOwner = t.ownerId === state.me.id;
   const anim = trickAnimation(t, g);
@@ -416,6 +417,7 @@ function seatHtml(t, g, seat, pos, tricks, anim) {
   if (c?.declarer === seat) tags.push('Melder');
   if (c?.soloists?.slice(1).includes(seat)) tags.push('Går med');
   if (c && c.partner === seat && c.partner !== c.declarer) tags.push('Makker');
+  if (c?.declarer === seat && c.hasCovered) tags.push('Fordækt kort');
   const peek = g.lastCompleted?.winner === seat && (!anim || anim.phase === 'done');
   const pile = g.phase === 'play' || g.phase === 'roundEnd' ? trickPile(tricks[seat], anim?.bump && anim.winner === seat, peek) : '';
   const openHand = g.openHands?.find(o => o.seat === seat);
@@ -504,9 +506,10 @@ function resultBox(t, g) {
     : `<p>${nameAt(c.declarer)} meldte <b>${esc(c.label)}</b> ${who} og fik ${r.teamTricks} stik.</p>`;
   const title = several ? (r.soloists.every(x => x.won) ? '✔ Alle gik hjem!' : r.soloists.some(x => x.won) ? 'Delvist hjem' : '✘ Alle gik ned')
     : r.won ? '✔ Meldingen gik hjem!' : '✘ Meldingen gik ned';
+  const covered = c.coveredPlayed ? `<p class="muted">Det fordækte kort var ${cardText(c.coveredPlayed)}.</p>` : '';
   return `<div class="result-box">
     <h3>${title}</h3>
-    ${outcome}
+    ${outcome}${covered}
     <table class="pts">${t.seats.map((p, i) => `<tr><td>${esc(p.name)}</td><td class="num ${r.points[i] < 0 ? 'neg' : ''}">${fmtPts(r.points[i])}</td></tr>`).join('')}</table>
     <p class="muted">Næste runde om <b data-countdown>${Math.ceil(t.nextRoundIn / 1000)}</b> sek.</p>
   </div>`;
@@ -551,7 +554,7 @@ function trickTable(names, winners, c) {
 }
 
 // Valg efter meldingen (trumf, makker-es, vip, katten) vises på bordet over spillerens kort.
-const CHOICE_PHASES = ['contract', 'halveTrump', 'vip', 'exchange'];
+const CHOICE_PHASES = ['contract', 'halveTrump', 'vip', 'exchange', 'cover'];
 
 // Instruktion til spilleren lige over egne kort, når det er ens tur (valg efter meldingen har sin egen boks).
 function turnHint(t, g, anim) {
@@ -594,6 +597,12 @@ function choiceHtml(t, g) {
       return `<p>Vælg 3 kort at lægge (${ui.discard.length}/3). Kortene fra katten er markeret.</p>
         <div class="row"><button class="primary" data-action="discard" ${ui.discard.length === 3 ? '' : 'disabled'}>Læg kortene</button></div>`;
     }
+    case 'cover':
+      return `<p>Du har ingen kort i makker-essets kulør (${cardText(c.ace)}). Du kan lægge et kort fordækt – det tæller
+        som laveste ${SUIT_SYM[c.ace[0]]} og bruges til at spille ud til makker-esset eller lægges, første gang kuløren
+        spilles. Ingen andre ser, hvilket kort det er.</p>
+        <div class="row"><button class="primary" data-action="cover" ${ui.cover ? '' : 'disabled'}>Læg ${ui.cover ? cardText(ui.cover) : 'kortet'} fordækt</button>
+        <button data-action="noCover">Intet fordækt kort</button></div>`;
     default:
       return '';
   }
@@ -651,16 +660,25 @@ function contractChooser(g) {
 
 function handHtml(g, me, anim) {
   const c = g.contract;
-  // Man kan ikke spille ud, mens det forrige stik bliver samlet ind.
-  if (anim && anim.phase !== 'done') return g.hand.map(x => cardHtml(x)).join('');
   if (g.phase === 'exchange' && g.turn === me && c.tookKat) {
     return sortCards(g.hand, !!c.bid.nolo).map(x => cardHtml(x, { action: 'toggleDiscard', selected: ui.discard.includes(x), fromKat: c.fromKat.includes(x) })).join('');
   }
-  if (g.phase === 'play' && g.turn === me) {
-    return g.hand.map(x => cardHtml(x, { action: 'play', disabled: !g.legal.includes(x) })).join('');
+  if (g.phase === 'cover' && g.turn === me) {
+    return g.hand.map(x => cardHtml(x, { action: 'toggleCover', selected: ui.cover === x })).join('');
   }
-  return g.hand.map(x => cardHtml(x)).join('');
+  // Melderens fordækte kort ligger for sig selv yderst til højre.
+  const covered = c?.covered
+    ? `<div class="covered-card" title="Fordækt kort – tæller som laveste ${SUIT_SYM[c.ace[0]]}">${myTurnToPlay(g, me, anim)
+      ? cardHtml(c.covered, { action: 'play', disabled: !g.legal.includes(c.covered) }) : cardHtml(c.covered)}<span>fordækt</span></div>`
+    : '';
+  if (myTurnToPlay(g, me, anim)) {
+    return g.hand.map(x => cardHtml(x, { action: 'play', disabled: !g.legal.includes(x) })).join('') + covered;
+  }
+  return g.hand.map(x => cardHtml(x)).join('') + covered;
 }
+
+// Man kan ikke spille ud, mens det forrige stik bliver samlet ind.
+const myTurnToPlay = (g, me, anim) => g.phase === 'play' && g.turn === me && (!anim || anim.phase === 'done');
 
 function pausedOverlay(t, isOwner) {
   const missing = t.seats.filter(p => !p.online).map(p => esc(p.name));
@@ -1175,6 +1193,12 @@ const actions = {
     render();
   },
   discard: () => socket.emit('game:discard', ui.discard),
+  toggleCover(d) {
+    ui.cover = ui.cover === d.card ? null : d.card;
+    render();
+  },
+  cover: () => socket.emit('game:cover', ui.cover),
+  noCover: () => socket.emit('game:cover', null),
   play: d => socket.emit('game:play', d.card),
   standings: () => setModal({ type: 'standings', tab: 'table', wide: true }),
   history: () => showHistory(),

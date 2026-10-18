@@ -8,6 +8,8 @@ const rules = defaultRules();
 
 // Usorteret bunke: plads 0 får alle spar, 1 hjerter, 2 klør, 3 ruder; katten er de 3 jokere.
 const fixedRound = (dealer = 3) => G.newRound(dealer, rules, G.makeDeck());
+// Melderen i fixedRound er renonce i makker-essets kulør og springer det fordækte kort over.
+const noCover = s => { if (s.phase === 'cover') G.cover(s, s.turn, null); };
 
 test('rangorden: gode slår halve, sol ligger mellem 9 og 9+', () => {
   assert.ok(bidRank({ n: 8, suffix: 'gode' }) > bidRank({ n: 8, suffix: 'halve' }));
@@ -67,6 +69,7 @@ test('makker-es og jokere: joker kan ikke spilles ud i første stik, men vinder 
   G.exchange(s, 0, true);
   assert.equal(s.hands[0].length, 16);
   G.discard(s, 0, ['S2', 'S3', 'S4']); // beholder jokerne
+  noCover(s);
   assert.equal(s.phase, 'play');
   assert.equal(s.contract.partner, 1);
   assert.ok(!G.legalCards(s, 0).some(G.isJoker)); // ikke ud i første stik
@@ -90,6 +93,7 @@ test('jokere: kan man bekende kulør, må man ikke lægge en joker; ellers har d
   const s = fixedRound(3);
   playTo(s, 0, { n: 7, suffix: null }, { trump: 'C', ace: 'H14' });
   G.exchange(s, 0, false);
+  noCover(s);
   s.hands[1].push('J1');
   s.hands[1].push('S3');
   G.play(s, 0, 'S5');
@@ -106,6 +110,7 @@ test('esmakker skal spille esset, når kuløren spilles ud', () => {
   const s = fixedRound(0); // forhånd = plads 1 (hjerter)
   playTo(s, 1, { n: 7, suffix: null }, { trump: 'H', ace: 'C14' });
   G.exchange(s, 1, false);
+  noCover(s);
   assert.equal(s.contract.partner, 2);
   G.play(s, 1, 'H2');
   G.play(s, 2, 'C2'); // har ikke hjerter
@@ -163,6 +168,7 @@ test('afspilning: uddelte kort, kat og alle spillede kort gemmes', () => {
   playTo(s, 0, { n: 7, suffix: null }, { trump: 'S', ace: 'H14' });
   G.exchange(s, 0, true);
   G.discard(s, 0, ['S2', 'S3', 'S4']);
+  noCover(s);
   while (s.phase === 'play') G.play(s, s.turn, G.legalCards(s, s.turn)[0]);
   const r = G.replayOf(s);
   assert.equal(r.dealt.hands[0].length, 13);
@@ -190,6 +196,7 @@ test('AI: fire AI-spillere kan spille mange runder uden fejl', async () => {
       else if (d.type === 'vip') G.vip(s, seat, d.accept);
       else if (d.type === 'exchange') G.exchange(s, seat, d.take);
       else if (d.type === 'discard') G.discard(s, seat, d.cards);
+      else if (d.type === 'cover') G.cover(s, seat, d.card);
       else if (d.type === 'play') G.play(s, seat, d.card);
     }
     assert.ok(['passed', 'roundEnd'].includes(s.phase), `runde ${i} gik i stå i ${s.phase}`);
@@ -239,6 +246,7 @@ test('melderens klient ser ikke makker, før makker-esset er spillet', () => {
   const s = fixedRound(3);
   playTo(s, 0, { n: 7, suffix: null }, { trump: 'S', ace: 'C14' }); // plads 2 har klør es
   G.exchange(s, 0, false);
+  noCover(s);
   assert.equal(G.view(s, 0).contract.partner, null);
   G.play(s, 0, 'S2');
   G.play(s, 1, 'H2');
@@ -267,7 +275,7 @@ test('AI ved nolo: modspillere spiller ikke ud i en kulør, melderen er renonce 
       }
       ({ bid: () => G.bid(s, seat, d.bid), contract: () => G.chooseContract(s, seat, d), halveTrump: () => G.halveTrump(s, seat, d.trump),
         vip: () => G.vip(s, seat, d.accept), exchange: () => G.exchange(s, seat, d.take), discard: () => G.discard(s, seat, d.cards),
-        play: () => G.play(s, seat, d.card) })[d.type]();
+        cover: () => G.cover(s, seat, d.card), play: () => G.play(s, seat, d.card) })[d.type]();
     }
   }
   assert.ok(checked > 0, 'testen ramte ingen relevante situationer');
@@ -297,7 +305,7 @@ test('AI ved nolo: modspillerne giver udspillet til spilleren lige før melderen
       }
       ({ bid: () => G.bid(s, seat, d.bid), contract: () => G.chooseContract(s, seat, d), halveTrump: () => G.halveTrump(s, seat, d.trump),
         vip: () => G.vip(s, seat, d.accept), exchange: () => G.exchange(s, seat, d.take), discard: () => G.discard(s, seat, d.cards),
-        play: () => G.play(s, seat, d.card) })[d.type]();
+        cover: () => G.cover(s, seat, d.card), play: () => G.play(s, seat, d.card) })[d.type]();
     }
   }
   assert.ok(grabbed > 0 && kept > 0, `for få situationer: ${grabbed}/${kept}`);
@@ -358,7 +366,7 @@ test('AI kan gå med på nolo, og runder med flere nolo-spillere spilles færdig
       const seat = s.turn, d = decide(s, seat, 'risky');
       ({ bid: () => G.bid(s, seat, d.bid), contract: () => G.chooseContract(s, seat, d), halveTrump: () => G.halveTrump(s, seat, d.trump),
         vip: () => G.vip(s, seat, d.accept), exchange: () => G.exchange(s, seat, d.take), discard: () => G.discard(s, seat, d.cards),
-        play: () => G.play(s, seat, d.card) })[d.type]();
+        cover: () => G.cover(s, seat, d.card), play: () => G.play(s, seat, d.card) })[d.type]();
     }
     assert.ok(['passed', 'roundEnd'].includes(s.phase));
     if (s.phase === 'roundEnd' && s.result.soloists?.length > 1) {
@@ -421,4 +429,57 @@ test('gå med: visningen fortæller hvilken nolo man kan gå med på', () => {
   G.bid(s, 0, { nolo: 'sol' });
   assert.equal(G.view(s, 1).joinNolo, 'sol');
   assert.equal(G.view(s, 2).joinNolo, null); // ikke plads 2's tur
+});
+
+// Plads 0 har alle spar og ingen hjerter; makker-esset ♥E sidder hos plads 1.
+function coverRound() {
+  const s = fixedRound(3);
+  G.bid(s, 0, { n: 7, suffix: null });
+  for (const seat of [1, 2, 3]) G.bid(s, seat, null);
+  G.chooseContract(s, 0, { trump: 'S', ace: 'H14' });
+  G.exchange(s, 0, false);
+  return s;
+}
+
+test('fordækt kort: melderen uden kort i essets kulør kan lægge et kort, som skjules for bordet', () => {
+  const s = coverRound();
+  assert.equal(s.phase, 'cover');
+  G.cover(s, 0, 'S2');
+  assert.equal(s.phase, 'play');
+  assert.equal(s.hands[0].length, 12);
+  assert.ok(G.view(s, 1).contract.hasCovered);
+  assert.equal(G.view(s, 1).contract.covered, null);
+  assert.equal(G.view(s, 0).contract.covered, 'S2');
+  assert.ok(G.legalCards(s, 0).includes('S2')); // kan spilles ud til makker-esset
+  G.play(s, 0, 'S2');
+  assert.equal(G.view(s, 2).trick[0].card, 'X');
+  assert.deepEqual(G.legalCards(s, 1), ['H14']); // det tæller som hjerter, så makker skal lægge esset
+  G.play(s, 1, 'H14');
+  G.play(s, 2, 'C2');
+  G.play(s, 3, 'D2');
+  assert.equal(s.trickWinners[0], 1);
+  assert.equal(G.view(s, 1).lastTrick.cards[0].card, 'X');
+  assert.equal(G.view(s, 1).contract.coveredPlayed, null); // vises først efter runden
+});
+
+test('fordækt kort: skal lægges når essets kulør spilles, og må ikke smides på anden kulør', () => {
+  const s = coverRound();
+  G.cover(s, 0, 'S3');
+  s.trick = [{ seat: 3, card: 'H5' }];
+  assert.deepEqual(G.legalCards(s, 0), ['S3']);
+  s.trick = [{ seat: 3, card: 'C5' }];
+  assert.ok(!G.legalCards(s, 0).includes('S3'));
+});
+
+test('fordækt kort: intet valg når melderen har kort i essets kulør, og det er frivilligt', () => {
+  const s = fixedRound(3);
+  G.bid(s, 0, { n: 7, suffix: null });
+  for (const seat of [1, 2, 3]) G.bid(s, seat, null);
+  G.chooseContract(s, 0, { trump: 'H', ace: 'S14' }); // eget es – har spar
+  G.exchange(s, 0, false);
+  assert.equal(s.phase, 'play');
+  const t = coverRound();
+  G.cover(t, 0, null);
+  assert.equal(t.phase, 'play');
+  assert.equal(t.hands[0].length, 13);
 });

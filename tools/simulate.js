@@ -72,6 +72,9 @@ function act(bot) {
       if (!c.tookKat) socket.emit('game:exchange', Math.random() < 0.6);
       else socket.emit('game:discard', [...g.hand].sort(() => Math.random() - 0.5).slice(0, 3));
       break;
+    case 'cover':
+      socket.emit('game:cover', Math.random() < 0.7 ? pick(g.hand) : null);
+      break;
     case 'play':
       socket.emit('game:play', pick(g.legal));
       break;
