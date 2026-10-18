@@ -199,6 +199,10 @@ spil kan genoptages præcis hvor det slap – også efter en servergenstart (det
 Er alle spillere ved bordet væk i 10 minutter under et spil (lukket fane, mistet forbindelse), gemmes bordet
 automatisk og kan genoptages derfra. Kommer én tilbage inden, fortsætter spillet som normalt.
 
+Betænkningstid (i `round_bids` og `round_plays`) måles fra turen begynder, til spilleren handler. Stopuret holder
+pause, mens spillet er sat på pause, og mens spilleren har stillingen, historikken, en genafspilning eller sidste
+stik åbent.
+
 ## Database
 
 | Tabel             | Indhold                                                                    |

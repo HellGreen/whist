@@ -62,6 +62,8 @@ function hello(name) {
   socket.emit('hello', name, res => {
     if (res.ok) {
       storage.set(NAME_KEY, res.data.name);
+      sentAway = false; // en ny forbindelse starter ved bordet
+      syncAway();
     } else {
       storage.del(NAME_KEY);
       toast(res.error);
@@ -117,16 +119,30 @@ function render() {
   if (!state) return;
   if (replay) {
     renderReplay();
-    return renderModal();
+    renderModal();
+    return syncAway();
   }
   if (!state.me) {
     app.innerHTML = storage.get(NAME_KEY) ? '<p class="connecting">Forbinder…</p>' : nameScreen();
     app.querySelector('input')?.focus();
   } else {
     const t = state.table;
+    lastTrickOpen = false;
     app.innerHTML = t?.game && t.mySeat >= 0 ? gameScreen(t) : lobbyScreen();
   }
   renderModal();
+  syncAway();
+}
+
+// Stopuret for betænkningstid holder pause, mens spilleren kigger på stilling, historik,
+// genafspilning eller sidste stik. Serveren får besked, når det skifter.
+let sentAway = false, lastTrickOpen = false;
+function syncAway() {
+  const t = state?.table;
+  const away = !!(state?.me && t?.game && t.mySeat >= 0) && (!!modal || !!replay || lastTrickOpen);
+  if (away === sentAway) return;
+  sentAway = away;
+  socket.emit('game:away', away);
 }
 
 function nameScreen() {
@@ -359,6 +375,7 @@ function gameScreen(t) {
   const tricks = g.tricks.map((n, seat) => (anim && anim.phase !== 'done' && anim.winner === seat ? n - 1 : n));
   // Visningen af sidste stik lukker af sig selv, når et nyt stik er afgjort.
   const showLast = g.lastCompleted && ui.lastTrick === g.lastCompleted.no && (!anim || anim.phase === 'done');
+  lastTrickOpen = !!showLast;
   const choice = choiceHtml(t, g);
 
   return `<div class="game">
@@ -739,6 +756,7 @@ function renderModal() {
 function setModal(next) {
   modal = next;
   renderModal();
+  syncAway();
 }
 
 const showModal = (html, wide = false) => setModal({ type: 'html', html, wide });

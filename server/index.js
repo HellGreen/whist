@@ -68,6 +68,8 @@ function newTable(ownerId, saved = null) {
     showResult: false,
     nextRoundAt: 0,
     turnSince: Date.now(), // hvornår den nuværende tur begyndte (til betænkningstid)
+    away: new Set(), // spillere der kigger på stilling, historik eller sidste stik
+    awayFrom: null, // hvornår spilleren, der har turen, gik væk fra bordet (stopuret holder pause)
     pausedAt: 0,
     autoSaveTimer: null,
   };
@@ -102,6 +104,7 @@ function setPaused(paused) {
   } else if (!paused && table.status === 'paused') {
     table.status = 'playing';
     table.turnSince += Date.now() - table.pausedAt; // pausen tæller ikke med i betænkningstiden
+    if (table.awayFrom) table.awayFrom += Date.now() - table.pausedAt;
   }
 }
 
@@ -151,7 +154,7 @@ function startGame() {
   t.ready.clear();
   for (const id of t.seats) if (isBot(id)) t.ready.add(id);
   t.status = 'playing';
-  t.turnSince = Date.now();
+  startTurnClock();
   if (t.savedState) {
     t.game = t.savedState.game;
     t.savedState = null;
@@ -206,7 +209,10 @@ function detach(socket) {
   socket.data.playerId = null;
   const entry = players.get(id);
   entry.sockets.delete(socket);
-  if (!entry.sockets.size) wentOffline(id);
+  if (!entry.sockets.size) {
+    setAway(id, false); // den nye forbindelse starter ved bordet
+    wentOffline(id);
+  }
 }
 
 // ---------- Spillet ----------
@@ -214,8 +220,36 @@ function detach(socket) {
 function startRound(dealer) {
   table.game = G.newRound(dealer, table.rules);
   table.showResult = false;
-  table.turnSince = Date.now();
+  startTurnClock();
   db.storeState(table.sessionId, snapshot());
+}
+
+// ---------- Betænkningstid ----------
+
+// Stopuret for den, der har turen, holder pause, mens spilleren er væk fra bordet i klienten
+// (stilling, historik, genafspilning eller sidste stik).
+function startTurnClock() {
+  const t = table, turn = t.game?.turn;
+  t.turnSince = Date.now();
+  t.awayFrom = turn != null && t.away.has(t.seats[turn]) ? t.turnSince : null;
+}
+
+function thinkMs() {
+  const now = Date.now();
+  return Math.max(0, now - table.turnSince - (table.awayFrom ? now - table.awayFrom : 0));
+}
+
+function setAway(id, away) {
+  if (!table || seatOf(id) < 0 || away === table.away.has(id)) return;
+  if (away) table.away.add(id);
+  else table.away.delete(id);
+  const turn = table.game?.turn;
+  if (turn == null || table.seats[turn] !== id) return;
+  if (away) table.awayFrom = Date.now();
+  else if (table.awayFrom) {
+    table.turnSince += Date.now() - table.awayFrom;
+    table.awayFrom = null;
+  }
 }
 
 function gameAction(id, fn) {
@@ -225,13 +259,13 @@ function gameAction(id, fn) {
   if (table.status !== 'playing') throw new UserError('Spillet er ikke i gang');
   const g = table.game;
   const before = { phase: g.phase, bids: g.bidLog.length, plays: g.plays?.length ?? 0 };
-  const ms = Date.now() - table.turnSince;
+  const ms = thinkMs();
   fn(g, seat);
   // Betænkningstid: fra turen begyndte, til spilleren traf sit valg.
   if (g.bidLog.length > before.bids) g.bidLog.at(-1).ms = ms;
   else if ((g.plays?.length ?? 0) > before.plays) g.plays.at(-1).ms = ms;
   else (g.decisions ??= []).push({ seat, phase: before.phase, ms });
-  table.turnSince = Date.now();
+  startTurnClock();
   db.storeState(table.sessionId, snapshot()); // så spillet kan genoptages præcis her
 
   if (g.phase === 'passed') {
@@ -536,6 +570,7 @@ io.on('connection', socket => {
   on('game:discard', game((g, seat, cards) => G.discard(g, seat, cards)));
   on('game:cover', game((g, seat, card) => G.cover(g, seat, card)));
   on('game:play', game((g, seat, card) => G.play(g, seat, card)));
+  on('game:away', away => setAway(me(), !!away));
 
   on('history:list', () => db.sessionList());
   on('history:session', id => db.sessionDetail(Number(id)));
