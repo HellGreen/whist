@@ -239,7 +239,7 @@ function rulesBox(t, editable) {
       ${order ? `<li>Påhæng fra lavest til højest: <b>${esc(order)}</b>${t.rules.bids.gode && t.rules.bids.halve ? ' – fx slår gode halve.' : '.'}</li>` : ''}
       ${nolos.map(x => `<li>${esc(x.label)} ligger mellem ${x.level} og ${x.level} med påhæng – den slås af ${x.level}+.</li>`).join('')}
       <li>Melderen kalder et es (ikke i trumf) for at finde sin makker. Kalder man et es, man selv har, er man selvmakker og får dobbelte point.</li>
-      <li>En joker spillet ud som første kort vinder altid stikket. Spilles den ikke ud, har den ingen værdi, men den må altid lægges. Jokere kan ikke spilles ud i første stik.</li>
+      <li>En joker spillet ud som første kort vinder altid stikket, og de andre må lægge hvad som helst. Spilles den ikke ud, har den ingen værdi, men den må altid lægges. Jokere kan ikke spilles ud i første stik.</li>
       <li>Man tager enten hele katten og lægger 3 kort, eller beholder sine kort.</li>
     </ul>
     <details><summary>Point</summary>
@@ -360,20 +360,19 @@ function gameScreen(t) {
           ${[0, 1, 2, 3].map(seat => seatHtml(t, g, seat, rel(seat), tricks, anim)).join('')}
           ${g.contract ? contractCorner(g.contract, tricks) : ''}
           <div class="center">${centerHtml(t, g, rel, anim)}</div>
+          ${turnHint(t, g, anim)}
           <div class="my-hand">${handHtml(g, me, anim)}</div>
           ${choice ? `<div class="table-choice">${choice}</div>` : ''}
           ${showLast ? lastTrickOverlay(g, rel) : ''}
         </div>
       </div>
       <aside class="side">
-        <div class="dealer-info">Giver: <b>${nameAt(g.dealer)}</b></div>
-        <section class="panel">${panelHtml(t, g)}</section>
+        ${g.phase === 'bidding' && g.turn === me ? `<section class="panel">${bidGrid(t, g)}</section>` : ''}
         ${trickPanel(t, g, anim)}
         <div class="round-box">
           <div class="round-head">Runde ${t.rounds.length + (g.phase === 'roundEnd' ? 0 : 1)}</div>
           <div class="round-buttons">
             <button data-action="standings">Stilling</button>
-            <button data-action="history">Historik</button>
             ${themeButton()}
             ${isOwner ? '<button data-action="save">Gem bordet</button><button class="danger" data-action="end">Afslut spil</button>' : ''}
           </div>
@@ -413,7 +412,9 @@ function seatHtml(t, g, seat, pos, tricks, anim) {
   const pile = g.phase === 'play' || g.phase === 'roundEnd' ? trickPile(tricks[seat], anim?.bump && anim.winner === seat, peek) : '';
   const open = g.openHand?.seat === seat
     ? `<div class="open-hand">${g.openHand.cards.map(x => cardHtml(x, { small: true })).join('')}</div>` : '';
+  const thinking = g.turn === seat && seat !== t.mySeat && g.phase !== 'bidding' && (!anim || anim.phase === 'done');
   return `<div class="seat-wrap pos-${pos}">
+    ${thinking ? '<div class="thinking-dots" title="Det er denne spillers tur"><span></span><span></span><span></span></div>' : ''}
     <div class="seat ${g.turn === seat ? 'turn' : ''} ${p.online ? '' : 'offline'}">
       <div class="name">${p.bot ? '🤖 ' : ''}${esc(p.name)}${p.online ? '' : ' (offline)'}</div>
       ${tags.length ? `<div class="tags">${tags.map(x => `<span class="tag">${x}</span>`).join('')}</div>` : ''}
@@ -511,7 +512,7 @@ function trickPanel(t, g, anim) {
 // grøn = melder/makker, rød = modspiller. Indtil makker kendes, er andres stik grå (ellers afsløres makker).
 // Nolo: melderens tilladte stik grønt, resten rødt; modspillernes stik grå. `winners` har null for uafgjorte stik.
 function trickTable(names, winners, c) {
-  const short = name => esc(name.length > 8 ? name.slice(0, 7) + '…' : name);
+  const short = name => esc(name.length > 13 ? name.slice(0, 12) + '…' : name);
   const nolo = c.nolo ?? !!c.bid?.nolo;
   const allowed = state.rulesInfo.nolos.find(x => x.key === c.bid?.nolo || x.label === c.label)?.maxTricks ?? 0;
   let declarerTricks = 0;
@@ -535,30 +536,19 @@ function trickTable(names, winners, c) {
 }
 
 // Valg efter meldingen (trumf, makker-es, vip, katten) vises på bordet over spillerens kort.
-const CHOICE_WAITING = {
-  contract: 'vælger trumf og makker-es', halveTrump: 'vælger trumf', vip: 'vipper', exchange: 'bytter med katten',
-};
+const CHOICE_PHASES = ['contract', 'halveTrump', 'vip', 'exchange'];
 
-function panelHtml(t, g) {
-  const myTurn = g.turn === t.mySeat;
-  const waiting = what => `<p class="muted">Venter på, at ${nameAt(g.turn)} ${what}…</p>`;
-  if (CHOICE_WAITING[g.phase]) return myTurn ? '<p><b>Din tur</b> – vælg på bordet.</p>' : waiting(CHOICE_WAITING[g.phase]);
-  switch (g.phase) {
-    case 'bidding':
-      return myTurn ? bidGrid(t, g) : waiting('melder');
-    case 'play':
-      return myTurn ? '<p><b>Din tur</b> – vælg et kort.</p>' : waiting('spiller');
-    case 'roundEnd':
-      return t.showResult ? '<p class="muted">Scoren vises på bordet.</p>' : '<p class="muted">Runden er slut…</p>';
-    default:
-      return '';
-  }
+// Instruktion til spilleren lige over egne kort, når det er ens tur (valg efter meldingen har sin egen boks).
+function turnHint(t, g, anim) {
+  if (g.turn !== t.mySeat || (anim && anim.phase !== 'done')) return '';
+  const text = { bidding: 'Din tur til at melde – vælg i panelet til højre', play: 'Din tur – vælg et kort' }[g.phase];
+  return text ? `<div class="turn-hint">${text}</div>` : '';
 }
 
 // Spillerens eget valg efter meldingen, eller '' hvis det ikke er spillerens tur til at vælge.
 function choiceHtml(t, g) {
   const me = t.mySeat, c = g.contract;
-  if (!CHOICE_WAITING[g.phase] || g.turn !== me) return '';
+  if (!CHOICE_PHASES.includes(g.phase) || g.turn !== me) return '';
   switch (g.phase) {
     case 'contract':
       return contractChooser(g);
@@ -693,7 +683,10 @@ function renderModal() {
   if (modal.type === 'standings') {
     const t = state.table;
     if (!t) { modal = null; return renderModal(); }
-    html = `<h2>Stillingen</h2>${standingsTable(t.seats.map(p => ({ id: p.id, name: p.name })), t.rounds, 'standings')}`;
+    const players = t.seats.map(p => ({ id: p.id, name: p.name }));
+    html = `<h2>Stillingen</h2>
+      <div class="hist-bar"><div class="tabs">${tabButtons(modal.tab ?? 'table')}</div></div>
+      ${modal.tab === 'chart' ? historyChart(players, t.rounds) : standingsTable(players, t.rounds, 'standings')}`;
   } else if (modal.type === 'history') {
     html = historyHtml(modal);
   }
@@ -722,14 +715,17 @@ function historyHtml(m) {
   if (!m.list.length || !m.detail) return '<h2>Historik</h2><p class="muted">Der er ikke spillet nogen runder endnu.</p>';
   const d = m.detail;
   const options = m.list.map(s => `<option value="${s.id}" ${s.id === d.id ? 'selected' : ''}>${fmtDay(s.startedAt)} kl. ${fmtTime(s.startedAt)} · ${s.players.map(p => p.name).join(', ')} · ${s.rounds} ${s.rounds === 1 ? 'runde' : 'runder'}</option>`).join('');
-  const tab = (key, label) => `<button class="tab ${m.tab === key ? 'active' : ''}" data-action="historyTab" data-tab="${key}">${label}</button>`;
   return `<h2>Historik</h2>
     <div class="hist-bar">
-      <div class="tabs">${tab('table', 'Tabel')}${tab('chart', 'Graf')}</div>
+      <div class="tabs">${tabButtons(m.tab)}</div>
       <select data-history-select aria-label="Vælg spilleaften">${options}</select>
     </div>
     ${m.tab === 'chart' ? historyChart(d.players, d.rounds) : standingsTable(d.players, d.rounds, `history:${d.id}`)}`;
 }
+
+// Fanerne Tabel/Graf – bruges af både historikken og stillingen ved bordet.
+const tabButtons = active => [['table', 'Tabel'], ['chart', 'Graf']]
+  .map(([key, label]) => `<button class="tab ${active === key ? 'active' : ''}" data-action="historyTab" data-tab="${key}">${label}</button>`).join('');
 
 // Point pr. spiller over runderne: x = runde, y = samlet score. Melderen får en udfyldt cirkel,
 // makkeren en åben cirkel. Hver spiller har en fast farve efter plads (ikke efter placering).
@@ -855,7 +851,7 @@ function stopReplay() {
   document.getElementById('app').innerHTML = '';
   render();
   if (from.startsWith('history:')) showHistory(Number(from.slice(8)));
-  else if (from === 'standings' && state.table?.game) setModal({ type: 'standings' });
+  else if (from === 'standings' && state.table?.game) setModal({ type: 'standings', tab: 'table', wide: true });
 }
 
 const contractStep = data => data.bidLog.length + 1;
@@ -969,7 +965,6 @@ function renderReplay() {
       <div class="table-area">
         <div class="felt-wrap"><div class="felt" id="rp-table"></div></div>
         <aside class="side">
-          <div class="dealer-info" id="rp-dealer"></div>
           <div id="rp-tricks"></div>
           <section class="panel rp-controls">
             <p class="rp-caption" id="rp-caption"></p>
@@ -1001,7 +996,6 @@ function renderReplay() {
   }
   const rs = replayState(data, m.step);
   app.querySelector('#rp-table').innerHTML = replayTable(m);
-  app.querySelector('#rp-dealer').innerHTML = `Giver: <b>${esc(data.players[data.dealer]?.name ?? '?')}</b>`;
   app.querySelector('#rp-tricks').innerHTML = replayTrickPanel(m, rs);
   app.querySelector('#rp-caption').innerHTML = replayCaption(data, m.step, rs);
   app.querySelector('#rp-slider').value = m.step;
@@ -1077,7 +1071,7 @@ const actions = {
   },
   discard: () => socket.emit('game:discard', ui.discard),
   play: d => socket.emit('game:play', d.card),
-  standings: () => setModal({ type: 'standings' }),
+  standings: () => setModal({ type: 'standings', tab: 'table', wide: true }),
   history: () => showHistory(),
   historyTab(d) {
     modal.tab = d.tab;

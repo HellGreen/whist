@@ -116,7 +116,7 @@ test('esmakker skal spille esset, når kuløren spilles ud', () => {
   assert.deepEqual(G.legalCards(s, 2), ['C14']);
 });
 
-test('sol: en joker spillet ud vinder, og næste kort bestemmer kuløren', () => {
+test('sol: en joker spillet ud vinder, og de andre må lægge hvad som helst', () => {
   const s = fixedRound(3);
   playTo(s, 0, { nolo: 'sol' });
   assert.equal(s.phase, 'exchange');
@@ -129,9 +129,11 @@ test('sol: en joker spillet ud vinder, og næste kort bestemmer kuløren', () =>
   assert.equal(s.tricks[0], 1); // melderen tog første stik med spar 2
   G.play(s, 0, 'J1'); // joker ud = sikkert stik, også i sol
   s.hands[2].push('H9');
-  G.play(s, 1, 'H3'); // første rigtige kort bestemmer kuløren
-  assert.deepEqual(G.legalCards(s, 2).filter(x => x[0] === 'H'), ['H9']);
-  assert.ok(!G.legalCards(s, 2).some(x => x[0] === 'C'));
+  G.play(s, 1, 'H3');
+  assert.equal(G.legalCards(s, 2).length, s.hands[2].length); // frit valg efter en joker – ingen kulør at bekende
+  G.play(s, 2, 'C3');
+  G.play(s, 3, 'D3');
+  assert.equal(s.lastTrick.winner, 0);
 });
 
 test('point: 9 vip\'2 med 10 stik giver 4 til hver i makkerparret', () => {

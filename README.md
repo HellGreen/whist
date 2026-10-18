@@ -134,9 +134,8 @@ valgt følgende, som er bekræftet (alt kan justeres i `server/bids.js`, `server
 - **Holde:** en spiller tidligere i melderunden må melde det samme som en senere spiller. Reglen er slået til som
   standard og kan slås fra af bordets ejer.
 - **Alle passer:** der gives om, og giveren rykker en plads.
-- **Jokere:** en joker spillet ud som første kort er et sikkert stik. Spilles den ikke ud, har den ingen værdi, men
-  den må altid lægges. Spilles en joker ud, bestemmer det næste rigtige kort kuløren. Jokere kan ikke spilles ud i
-  første stik.
+- **Jokere:** en joker spillet ud som første kort er et sikkert stik, og de andre må lægge hvad som helst. Spilles
+  den ikke ud, har den ingen værdi, men den må altid lægges. Jokere kan ikke spilles ud i første stik.
 - **Katten:** man tager hele katten og lægger 3 kort, eller beholder sine kort.
 - **Esset i nolo:** i sol, ren sol, bordlægger og ren bordlægger tæller esset som 1 (laveste kort).
 - **Point:** vundet = grundpoint × (1 + overstik), tabt = grundpoint × manglende stik. Påhæng ×2. Vip'1/2/3 ×2/×4/×8

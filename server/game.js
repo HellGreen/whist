@@ -232,9 +232,9 @@ function startPlay(s) {
 
 export const trumpSuit = s => (s.contract.trump === 'NT' ? null : s.contract.trump);
 
-// Jokere: spilles en joker ud som første kort, vinder den stikket. Ellers har den ingen værdi,
-// men den må altid lægges. Jokere må ikke spilles ud i første stik.
-// Spilles en joker ud, er det næste rigtige kort, der bestemmer kuløren.
+// Jokere: spilles en joker ud som første kort, vinder den stikket, og de andre må lægge
+// hvad som helst (der er ingen kulør at bekende). Ellers har en joker ingen værdi, men den
+// må altid lægges. Jokere må ikke spilles ud i første stik.
 export function ledSuitOf(trick) {
   const firstReal = trick.find(p => !isJoker(p.card));
   return firstReal ? suitOf(firstReal.card) : null;
@@ -248,6 +248,7 @@ export function legalCards(s, seat) {
     const firstTrick = !(s.trickWinners?.length ?? s.tricks.reduce((a, b) => a + b, 0));
     return firstTrick ? hand.filter(x => !isJoker(x)) : [...hand];
   }
+  if (isJoker(s.trick[0].card)) return [...hand]; // joker spillet ud: frit valg
   const led = ledSuit(s);
   if (!led) return [...hand];
   const c = s.contract;
