@@ -2,4 +2,5 @@ Kortene i denne mappe er konverteret fra npm-pakken @letele/playing-cards 0.1.0
 (https://github.com/letele/playing-cards), som er udgivet under CC0 1.0 Universal (public domain).
 Designet stammer fra Adrian Kennards klassiske spillekort: https://www.me.uk/cards/
 
-J3.svg er en kopi af J1.svg (spillet bruger tre jokere). back.svg og back2.svg er bagsider.
+J1.svg, J2.svg og J3.svg er samme joker (spillet bruger tre jokere). Den er tegnet til dette projekt
+efter et forlæg og hører ikke til @letele/playing-cards. back.svg og back2.svg er bagsider.
