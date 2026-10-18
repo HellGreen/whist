@@ -241,7 +241,7 @@ function rulesBox(t, editable) {
       <li>Et antal stik med påhæng slår samme antal uden: 8 halve slår 8, men 9 slår 8 med påhæng.</li>
       ${order ? `<li>Påhæng fra lavest til højest: <b>${esc(order)}</b>${t.rules.bids.gode && t.rules.bids.halve ? ' – fx slår gode halve.' : '.'}</li>` : ''}
       ${nolos.map(x => `<li>${esc(x.label)} ligger mellem ${x.level} og ${x.level} med påhæng – den slås af ${x.level}+.</li>`).join('')}
-      <li>Melderen kalder et es (ikke i trumf) for at finde sin makker. Kalder man et es, man selv har, er man selvmakker og får dobbelte point.</li>
+      <li>Melderen kalder et es (ikke i trumf) for at finde sin makker. Kalder man et es, man selv har, er man selvmakker og får dobbelte point. Har man alle fire esser, er man selvmakker – man kan ikke kalde en konge.</li>
       <li>En joker spillet ud som første kort vinder altid stikket, og de andre må lægge hvad som helst. Spilles den ikke ud, har den ingen værdi og må kun lægges, når man ikke kan bekende kulør. Jokere kan ikke spilles ud i første stik.</li>
       <li>Man tager enten hele katten og lægger 3 kort, eller beholder sine kort.</li>
     </ul>

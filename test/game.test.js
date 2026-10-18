@@ -483,3 +483,17 @@ test('fordækt kort: intet valg når melderen har kort i essets kulør; ellers e
   assert.throws(() => G.cover(t, 0, null), /fordækt/);
   assert.equal(t.phase, 'cover');
 });
+
+test('alle fire esser: melderen kan kun kalde et eget es og bliver selvmakker', async () => {
+  const { chooseAce } = await import('../server/ai.js');
+  const deck = G.makeDeck();
+  const mine = [...G.ACES, ...deck.filter(c => c[0] === 'S' && G.rankOf(c) < 14).slice(0, 9)];
+  const s = G.newRound(3, rules, [...mine, ...deck.filter(c => !mine.includes(c))]);
+  G.bid(s, 0, { n: 7, suffix: null });
+  for (const seat of [1, 2, 3]) G.bid(s, seat, null);
+  const ace = chooseAce(s.hands[0], 'S');
+  assert.ok(ace !== 'S14' && s.hands[0].includes(ace)); // AI kalder et eget es uden for trumf
+  G.chooseContract(s, 0, { trump: 'S', ace: 'H14' });
+  assert.ok(s.contract.selfCall);
+  assert.throws(() => G.chooseContract(s, 0, { trump: 'S', ace: 'S13' }));
+});

@@ -6,5 +6,4 @@
       i `public/app.js` (gemmes i localStorage under `whist.cards`) – der mangler kun en vælger i brugerfladen
 - [ ] Webcam: hver spiller kan aktivere sit webcam, som vises under spillerens navn ved bordet
       (der er allerede en tom `.cam`-plads under navnet i `public/app.js`; kræver HTTPS og WebRTC)
-- [ ] Kald af konge, når melderen har alle fire esser
 - [ ] Automatisk gem af bordet, hvis alle spillere har været væk længe
