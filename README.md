@@ -135,7 +135,14 @@ Alle kommandoer køres i en terminal på serveren.
    WantedBy=multi-user.target
    ```
 
-   Tjek stien til node med `which node` – står den ikke i `/usr/bin/node`, så ret `ExecStart`.
+   Node skal være installeret for hele systemet i `/usr/bin/node` (tjek med `/usr/bin/node --version`). En node
+   fra nvm i din egen hjemmemappe virker ikke: `whist`-brugeren kan ikke læse den, og `sudo` finder ikke dens
+   `npm`. På Ubuntu/Debian:
+
+   ```sh
+   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+   sudo apt install -y nodejs
+   ```
 
 5. Slå servicen til, og start spillet:
 
