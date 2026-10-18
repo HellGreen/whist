@@ -17,6 +17,7 @@ export const PROFILES = {
   risky: {
     key: 'risky', label: 'Vovehals', desc: 'Melder højt, går gerne efter sol og tager chancer i spillet.',
     margin: 1, noloSlack: 2.5, vipLength: 3, gamble: 0.08,
+    selfCall: 0.5, // kalder eget es (selvmakker, dobbelte point), når sikre stik + dette antal (hjælp fra katten) ≥ meldingen; ca. 3 % af trumfrunderne
   },
 };
 
@@ -61,6 +62,24 @@ function bestTrump(hand, exclude = null) {
     .sort((a, b) => b.tricks - a.tricks)[0];
 }
 
+// Stik man med sikkerhed tager: jokere (spillet ud), topkort i trumf fra esset og nedefter (E, E-K, E-K-D …),
+// trumf ud over 5 i længden (modspillerne løber tør for trumf) og esser i sidekulører. Konger osv. i
+// sidekulører tæller ikke – de kan blive stukket med trumf.
+export function sureTricks(hand, trump) {
+  let sure = jokersIn(hand);
+  for (const suit of SUITS) {
+    const r = ranksIn(hand, suit);
+    if (suit !== trump) {
+      if (r.includes(14)) sure++;
+      continue;
+    }
+    let top = 0;
+    while (r.includes(14 - top)) top++;
+    sure += top + Math.max(0, r.length - Math.max(5, top));
+  }
+  return sure;
+}
+
 // Hvor mange kort risikerer at tage stik i et nolo-spil. Det i'te laveste kort i en
 // farve er sikkert, hvis det er lavt nok i forhold til, hvor mange lavere kort man har.
 export function noloDanger(hand) {
@@ -99,21 +118,31 @@ function chooseBid(s, seat, p) {
   return options[0] ?? null; // billigste melding der stadig slår den gældende
 }
 
-function chooseAce(hand, trump) {
+// Kulørens vægt: summen af egne kort i kuløren (2–10 som tallet, B=11, D=12, K=13, E=14).
+export const suitWeight = (hand, suit) => ranksIn(hand, suit).reduce((a, b) => a + b, 0);
+
+// Kald esset i den kulør, hvor egne kort vejer mest (ved lighed: spar, hjerter, klør, ruder).
+// Har man alle esserne uden for trumf, er man tvunget til at være selvmakker – så i den letteste kulør.
+// selfCall: kald i stedet sit eget es med vilje (selvmakker giver dobbelte point).
+export function chooseAce(hand, trump, selfCall = false) {
   const options = ACES.filter(a => suitOf(a) !== trump);
-  const others = options.filter(a => !hand.includes(a));
-  const byLength = list => list.sort((a, b) => ranksIn(hand, suitOf(b)).length - ranksIn(hand, suitOf(a)).length);
-  // Kald esset i den farve, hvor man selv er længst; har man alle esserne, bliver man selvmakker.
-  if (others.length) return byLength(others)[0];
-  return byLength(options).at(-1);
+  const byWeight = list => [...list].sort((a, b) => suitWeight(hand, suitOf(b)) - suitWeight(hand, suitOf(a)));
+  const own = options.filter(a => hand.includes(a)), others = options.filter(a => !hand.includes(a));
+  if (selfCall && own.length) return byWeight(own)[0];
+  if (others.length) return byWeight(others)[0];
+  return byWeight(options).at(-1);
 }
 
-function chooseContract(s, seat) {
-  const hand = s.hands[seat], sfx = s.contract.bid.suffix;
+function chooseContract(s, seat, p) {
+  const hand = s.hands[seat], c = s.contract, sfx = c.bid.suffix;
   const fixed = { gode: 'C', staerke: 'S', trumfloese: 'NT' }[sfx];
   const trump = sfx == null || sfx === 'kvarte' ? bestTrump(hand).suit : fixed ?? null;
   if (sfx === 'kvarte') return { trump };
-  return { trump, ace: chooseAce(hand, trump === 'NT' ? null : trump) };
+  const plainTrump = trump === 'NT' ? null : trump;
+  // Selvmakker med vilje kun når hånden med sikkerhed tager meldingen – Vovehals regner med lidt hjælp fra katten.
+  // Ikke ved halve og vip, hvor trumf først bestemmes bagefter.
+  const strong = p.selfCall != null && sfx !== 'halve' && sfx !== 'vip' && sureTricks(hand, plainTrump) + p.selfCall >= c.bid.n;
+  return { trump, ace: chooseAce(hand, plainTrump, strong) };
 }
 
 function acceptVip(s, seat, p) {
@@ -295,7 +324,7 @@ export function decide(s, seat, profile) {
   if (s.turn !== seat) return null;
   switch (s.phase) {
     case 'bidding': return { type: 'bid', bid: chooseBid(s, seat, p) };
-    case 'contract': return { type: 'contract', ...chooseContract(s, seat) };
+    case 'contract': return { type: 'contract', ...chooseContract(s, seat, p) };
     case 'halveTrump': return { type: 'halveTrump', trump: bestTrump(s.hands[seat], suitOf(s.contract.ace)).suit };
     case 'vip': return { type: 'vip', accept: acceptVip(s, seat, p) };
     case 'exchange': {

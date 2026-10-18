@@ -368,3 +368,23 @@ test('AI kan gå med på nolo, og runder med flere nolo-spillere spilles færdig
   }
   assert.ok(several > 0, 'ingen AI gik med på nolo');
 });
+
+test('AI: makker-es kaldes i kuløren med højest samlet værdi; Vovehals kan vælge selvmakker', async () => {
+  const { chooseAce } = await import('../server/ai.js');
+  // Hjerter: 2+3+4+5 = 14, klør: K+D = 25 -> klør es, selvom hjerter er længst.
+  assert.equal(chooseAce(['H2', 'H3', 'H4', 'H5', 'C13', 'C12', 'S2', 'D3'], null), 'C14');
+  // Lige vægt (spar 10 / ruder 10) -> rækkefølgen spar, hjerter, klør, ruder.
+  assert.equal(chooseAce(['S10', 'D10', 'H2'], 'H'), 'S14');
+  // Trumf kan ikke kaldes.
+  assert.equal(chooseAce(['C13', 'C12', 'H2'], 'C'), 'H14');
+  // Selvmakker med vilje: eget es i den tungeste kulør.
+  assert.equal(chooseAce(['S14', 'S13', 'H14', 'H2', 'D5'], 'D', true), 'S14');
+  // Har man alle esser uden for trumf, bliver man selvmakker i den letteste kulør.
+  assert.equal(chooseAce(['S14', 'S13', 'H14', 'C14', 'C2'], 'D'), 'H14');
+});
+
+test('AI: sikre stik tæller jokere, topkort i trumf, lange trumf og esser i sidekulører', async () => {
+  const { sureTricks } = await import('../server/ai.js');
+  // Trumf spar E-K-D + 3 små = 6 trumf: 3 topkort + 1 for længden over 5. Hjerter E: 1. Klør K: 0. Joker: 1.
+  assert.equal(sureTricks(['S14', 'S13', 'S12', 'S5', 'S4', 'S3', 'H14', 'H2', 'C13', 'J1'], 'S'), 6);
+});
