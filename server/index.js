@@ -574,6 +574,14 @@ io.on('connection', socket => {
   on('game:play', game((g, seat, card) => G.play(g, seat, card)));
   on('game:away', away => setAway(me(), !!away));
 
+  // Webcam: serveren videresender kun WebRTC-opsætningen mellem to spillere ved bordet.
+  on('rtc:signal', msg => {
+    const id = me();
+    const to = msg?.to;
+    if (seatOf(id) < 0 || seatOf(to) < 0 || to === id || isBot(to)) return;
+    for (const s of players.get(to)?.sockets ?? []) s.emit('rtc:signal', { from: id, data: msg.data });
+  });
+
   on('history:list', () => db.sessionList());
   on('history:session', id => db.sessionDetail(Number(id)));
   on('history:replay', roundId => {

@@ -4,5 +4,4 @@
       kortene for Forsigtig / Normal / Vovehals – se `gamble` i `server/ai.js`)
 - [ ] Vælg korttema ved bordet (kun for spilleren selv). Temaerne findes allerede: `classic` og `simple`
       i `public/app.js` (gemmes i localStorage under `whist.cards`) – der mangler kun en vælger i brugerfladen
-- [ ] Webcam: hver spiller kan aktivere sit webcam, som vises under spillerens navn ved bordet
-      (der er allerede en tom `.cam`-plads under navnet i `public/app.js`; kræver HTTPS og WebRTC)
+- [ ] Webcam på mobil/tablet, og evt. TURN-server (coturn), hvis nogen ikke kan få forbindelse bag deres router

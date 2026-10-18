@@ -50,6 +50,23 @@ Miljøvariabler:
 | `WHIST_DB` | `data/whist.db`  | Sti til databasen       |
 | `WHIST_DELAY_FACTOR` | `1` | Gang alle ventetider (AI, score, automatisk gem) med dette tal – fx `0.05` under test |
 
+## Webcam og lyd
+
+Under et spil står der en kolonne til venstre for bordet med et billede pr. spiller. Hver spiller trykker selv
+**Tænd kamera** (browseren spørger om adgang til kamera og mikrofon); 🎤 slår ens egen mikrofon fra og til, og ⏹
+slukker igen. Har man intet kamera, sendes kun lyd. Brug gerne headset, så der ikke kommer ekko.
+
+Video og lyd går direkte mellem browserne (WebRTC). Serveren formidler kun opsætningen (`rtc:signal`), og
+browserne finder hinanden gennem routerne med Googles offentlige STUN-server. Der er ingen TURN-server, så sidder
+en spiller bag en meget striks router eller et mobilnet, kan forbindelsen til vedkommende udeblive.
+
+Browsere giver kun adgang til kamera og mikrofon på `https://` eller `http://localhost`. På udviklingsmaskinen
+virker det altså på `http://localhost:3000`; på en server kræver det HTTPS (se Caddy nedenfor).
+
+Afprøvning med flere spillere på samme pc: navnet gemmes i browseren, så brug én browser (eller ét InPrivate-/
+inkognitovindue, eller én Chrome-profil) pr. spiller – fx Chrome, Edge og Firefox – og fyld resten op med AI.
+Windows lader normalt flere browsere bruge kameraet samtidig.
+
 ## Drift på Linux-server
 
 Koden går via et privat GitHub-repo: udviklingsmaskinen pusher, og serverne henter selv. Serverne skal altså kun
@@ -165,7 +182,7 @@ Alle kommandoer køres i en terminal på serveren.
    }
    ```
 
-   HTTPS er også nødvendigt for webcam-funktionen senere, da browsere kun giver adgang til kamera på sikre sider.
+   HTTPS er også nødvendigt for webcam og lyd, da browsere kun giver adgang til kamera og mikrofon på sikre sider.
    Domænet skal pege på serveren, og port 80 og 443 skal være åbne, så Caddy kan hente certifikatet. Port 3000
    skal ikke være åben udadtil.
 
@@ -234,6 +251,7 @@ server/
   ai.js       AI-spillere med tre risikoprofiler
   db.js       SQLite: spillere, spilleaftener, runder, point, statistik
 public/       klienten (ren HTML/CSS/JS, intet byggetrin)
+  cams.js     webcam og lyd ved bordet (WebRTC)
   cards/classic/  klassiske kort som SVG (CC0, se LICENSE.txt i mappen)
 test/         tests af spilmotoren
 tools/        simulering med fire bots

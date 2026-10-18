@@ -1,5 +1,7 @@
 /* global io */
 // Klient: tegner venterum, spillebord, historik og afspiller ud fra den tilstand serveren sender.
+import { initCams, updateCams } from './cams.js';
+
 const socket = io();
 const NAME_KEY = 'whist.name';
 const THEME_KEY = 'whist.theme';
@@ -81,8 +83,10 @@ socket.on('state', s => {
   state = s;
   nextRoundDeadline = s.table?.showResult ? Date.now() + s.table.nextRoundIn : 0;
   render();
+  updateCams(s);
 });
 socket.on('toast', toast);
+initCams(socket, toast);
 
 function toast(message) {
   const el = document.createElement('div');
@@ -445,7 +449,6 @@ function seatHtml(t, g, seat, pos, tricks, anim) {
     <div class="seat ${g.turn === seat ? 'turn' : ''} ${p.online ? '' : 'offline'}">
       <div class="name">${p.bot ? '🤖 ' : ''}${esc(p.name)}${p.online ? '' : ' (offline)'}</div>
       ${tags.length ? `<div class="tags">${tags.map(x => `<span class="tag">${x}</span>`).join('')}</div>` : ''}
-      <div class="cam" data-seat="${seat}"></div>
       ${open}
     </div>
     ${pile}
