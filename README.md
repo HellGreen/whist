@@ -52,7 +52,15 @@ Miljøvariabler:
 
 ## Drift på Linux-server
 
-1. Installer Node.js 22 LTS eller nyere, kopiér projektet til fx `/opt/whist`, og kør `npm ci --omit=dev`.
+Første gang:
+
+1. Installer Node.js 22 LTS eller nyere, og opret en systembruger, som spillet kører som:
+
+   ```sh
+   sudo useradd --system --home /opt/whist --shell /usr/sbin/nologin whist
+   sudo mkdir -p /opt/whist && sudo chown whist: /opt/whist
+   ```
+
 2. Opret en systemd-service, `/etc/systemd/system/whist.service`:
 
    ```ini
@@ -71,7 +79,7 @@ Miljøvariabler:
    WantedBy=multi-user.target
    ```
 
-   `sudo systemctl enable --now whist`
+   `sudo systemctl enable whist` (den startes første gang af `deploy.sh`).
 
 3. Sæt en reverse proxy med HTTPS foran. Med [Caddy](https://caddyserver.com) er det to linjer i `Caddyfile`
    (Caddy henter selv et certifikat og håndterer websockets):
@@ -83,6 +91,27 @@ Miljøvariabler:
    ```
 
    HTTPS er også nødvendigt for webcam-funktionen senere, da browsere kun giver adgang til kamera på sikre sider.
+   Domænet skal pege på serveren, og port 80 og 443 skal være åbne, så Caddy kan hente certifikatet. Port 3000
+   skal ikke være åben udadtil.
+
+Opdatering (og første installation) fra udviklingsmaskinen, i Git Bash:
+
+```sh
+./deploy.sh bruger@server      # WHIST_DIR=/sti ./deploy.sh ... hvis ikke /opt/whist
+```
+
+Scriptet pakker den committede kode (`git archive HEAD`), sender den over ssh, kører `npm ci --omit=dev` og genstarter
+servicen. Ændringer, der ikke er committet, kommer ikke med, og `data/` på serveren røres ikke. Brugeren på
+serveren skal have `sudo`.
+
+Databasen følger ikke med (`data/` er i `.gitignore`), så serveren starter med en tom database. Skal den lokale
+med, så stop servicen og kopiér den over én gang:
+
+```sh
+ssh -t bruger@server 'sudo systemctl stop whist'
+scp data/whist.db bruger@server:/tmp/
+ssh -t bruger@server 'sudo rm -f /opt/whist/data/whist.db-wal /opt/whist/data/whist.db-shm && sudo install -o whist -g whist -m 640 -D /tmp/whist.db /opt/whist/data/whist.db && sudo systemctl start whist'
+```
 
 Databasen ligger i `data/whist.db`. Tag backup af den mappe. Spillets tilstand gemmes efter hver handling, så et
 spil kan genoptages præcis hvor det slap – også efter en servergenstart (det ligger så under "Gemte borde").
