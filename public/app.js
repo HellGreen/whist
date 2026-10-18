@@ -86,7 +86,7 @@ socket.on('state', s => {
   updateCams(s);
 });
 socket.on('toast', toast);
-initCams(socket, toast);
+initCams(socket);
 
 function toast(message) {
   const el = document.createElement('div');

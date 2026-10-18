@@ -10,18 +10,20 @@ const ICE = [{ urls: 'stun:stun.l.google.com:19302' }];
 const POS_ORDER = [0, 1, 2, 3]; // relativt til mig, med uret: mig, venstre, overfor, højre
 const sid = Math.random().toString(36).slice(2);
 
-let socket = null, toast = () => {};
+let socket = null;
 let me = null; // mit spiller-id
 let local = null; // MediaStream fra kamera/mikrofon
 let micOn = true;
 const peers = new Map(); // spiller-id -> { pc, polite, sid, makingOffer, ignoreOffer, senders, stream, status }
 const tiles = new Map(); // spiller-id -> { el, video, label, info }
-let column = null;
+let column = null, messages = null;
 
-export function initCams(sock, toastFn) {
+export function initCams(sock) {
   socket = sock;
-  toast = toastFn;
   column = document.getElementById('cams');
+  messages = document.createElement('div');
+  messages.className = 'cam-messages';
+  column.append(messages); // står altid under kameraerne
   column.addEventListener('click', onClick);
   socket.on('rtc:signal', ({ from, data }) => onSignal(from, data).catch(err => console.warn('WebRTC', err)));
   socket.on('disconnect', () => { for (const id of [...peers.keys()]) closePeer(id); });
@@ -93,6 +95,17 @@ function makeTile(mine) {
 
 const refresh = () => renderTiles(); // opdater med det samme, uden at vente på serveren
 
+// Beskeder om kamera og lyd vises i kolonnen under kameraerne (klik for at lukke).
+function note(text) {
+  const el = document.createElement('div');
+  el.className = 'cam-message';
+  el.textContent = text;
+  el.title = 'Klik for at lukke';
+  el.addEventListener('click', () => el.remove());
+  messages.append(el);
+  setTimeout(() => el.remove(), 8000);
+}
+
 function onClick(e) {
   const action = e.target.closest('[data-cam]')?.dataset.cam;
   if (action === 'start') startLocal();
@@ -105,7 +118,7 @@ function onClick(e) {
 async function startLocal() {
   if (!navigator.mediaDevices) {
     // Kamera og mikrofon kræver en sikker side: https:// eller http://localhost.
-    toast('Kamera og mikrofon virker kun på https:// eller http://localhost – se README under "Webcam og lyd"');
+    note('Kamera og mikrofon virker kun på https:// eller http://localhost – se README under "Webcam og lyd"');
     return;
   }
   const video = { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15 } };
@@ -114,10 +127,10 @@ async function startLocal() {
   } catch (err) {
     try {
       local = await navigator.mediaDevices.getUserMedia({ audio: true }); // intet kamera: kun lyd
-      toast('Kameraet kunne ikke startes – kun mikrofonen er tændt');
+      note('Kameraet kunne ikke startes – kun mikrofonen er tændt');
     } catch {
       local = null;
-      toast(err?.name === 'NotAllowedError' ? 'Du har ikke givet adgang til kamera og mikrofon' : 'Kamera og mikrofon kunne ikke startes');
+      note(err?.name === 'NotAllowedError' ? 'Du har ikke givet adgang til kamera og mikrofon' : 'Kamera og mikrofon kunne ikke startes');
       return;
     }
   }
