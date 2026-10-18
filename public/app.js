@@ -686,7 +686,7 @@ function renderModal() {
     const players = t.seats.map(p => ({ id: p.id, name: p.name }));
     html = `<h2>Stillingen</h2>
       <div class="hist-bar"><div class="tabs">${tabButtons(modal.tab ?? 'table')}</div></div>
-      ${modal.tab === 'chart' ? historyChart(players, t.rounds) : standingsTable(players, t.rounds, 'standings')}`;
+      ${tabContent(modal.tab, players, t.rounds, 'standings', t.sessionId)}`;
   } else if (modal.type === 'history') {
     html = historyHtml(modal);
   }
@@ -720,12 +720,79 @@ function historyHtml(m) {
       <div class="tabs">${tabButtons(m.tab)}</div>
       <select data-history-select aria-label="Vælg spilleaften">${options}</select>
     </div>
-    ${m.tab === 'chart' ? historyChart(d.players, d.rounds) : standingsTable(d.players, d.rounds, `history:${d.id}`)}`;
+    ${tabContent(m.tab, d.players, d.rounds, `history:${d.id}`, d.id)}`;
 }
 
-// Fanerne Tabel/Graf – bruges af både historikken og stillingen ved bordet.
-const tabButtons = active => [['table', 'Tabel'], ['chart', 'Graf']]
+// Fanerne – bruges af både historikken og stillingen ved bordet.
+const TABS = [['table', 'Runder'], ['chart', 'Pointudvikling'], ['pairs', 'Makkerpar'], ['stats', 'Statistik']];
+const tabButtons = active => TABS
   .map(([key, label]) => `<button class="tab ${active === key ? 'active' : ''}" data-action="historyTab" data-tab="${key}">${label}</button>`).join('');
+
+// Indholdet af den valgte fane. Statistikken hentes fra serveren for den ene aften og hentes igen,
+// når der er spillet en ny runde.
+function tabContent(tab, players, rounds, from, sessionId) {
+  if (tab === 'chart') return historyChart(players, rounds);
+  if (tab === 'pairs') return pairsChart(players, rounds);
+  if (tab === 'stats') {
+    if (!sessionId || !rounds.length) return '<p class="muted">Ingen runder spillet endnu.</p>';
+    const key = `${sessionId}|${rounds.length}`;
+    if (modal.stats?.key === key) return statsHtml(modal.stats.data);
+    if (modal.statsLoading !== key) {
+      modal.statsLoading = key;
+      const current = modal;
+      request('stats', sessionId).then(data => {
+        if (modal !== current || !data) return;
+        modal.stats = { key, data };
+        renderModal();
+      });
+    }
+    return '<p class="muted">Henter statistik…</p>';
+  }
+  return standingsTable(players, rounds, from);
+}
+
+// Cirkeldiagram over hvor ofte hvert makkerpar har spillet sammen. Hvert par har en fast farve
+// efter pladserne (ikke efter antal), og runder hvor melderen spillede alene, er grå.
+function pairsChart(players, rounds) {
+  if (!rounds.length) return '<p class="muted">Ingen runder spillet endnu.</p>';
+  const slices = [];
+  for (let a = 0; a < players.length; a++) {
+    for (let b = a + 1; b < players.length; b++) {
+      const ids = [players[a].id, players[b].id];
+      slices.push({
+        label: `${players[a].name} + ${players[b].name}`, color: `var(--series-${slices.length + 1})`,
+        count: rounds.filter(r => r.partnerId != null && ids.includes(r.declarerId) && ids.includes(r.partnerId)).length,
+      });
+    }
+  }
+  slices.push({ label: 'Alene (selvmakker, kvarte, nolo)', color: 'var(--muted)', count: rounds.filter(r => r.partnerId == null).length });
+  const total = rounds.length;
+  const cx = 160, cy = 160, ro = 150, ri = 82;
+  const point = (r, a) => `${cx + r * Math.sin(a)},${cy - r * Math.cos(a)}`;
+  let angle = 0;
+  const arcs = slices.filter(s => s.count).map(s => {
+    const sweep = (s.count / total) * Math.PI * 2;
+    const a0 = angle, a1 = angle + sweep;
+    angle = a1;
+    const pct = Math.round((100 * s.count) / total);
+    const title = `<title>${esc(s.label)}: ${s.count} ${s.count === 1 ? 'runde' : 'runder'} (${pct} %)</title>`;
+    if (s.count === total) {
+      return `<g>${title}<circle cx="${cx}" cy="${cy}" r="${(ro + ri) / 2}" fill="none" stroke="${s.color}" stroke-width="${ro - ri}"/></g>`;
+    }
+    const large = sweep > Math.PI ? 1 : 0;
+    return `<path d="M${point(ro, a0)} A${ro},${ro} 0 ${large} 1 ${point(ro, a1)} L${point(ri, a1)} A${ri},${ri} 0 ${large} 0 ${point(ri, a0)} Z" fill="${s.color}" class="slice">${title}</path>`;
+  }).join('');
+  const legend = slices.map(s => `<tr class="${s.count ? '' : 'none'}"><td><i style="background:${s.color}"></i>${esc(s.label)}</td>
+    <td class="num">${s.count}</td><td class="num">${Math.round((100 * s.count) / total)} %</td></tr>`).join('');
+  return `<div class="pairs-chart">
+    <svg viewBox="0 0 320 320" role="img" aria-label="Fordeling af makkerpar">
+      ${arcs}
+      <text x="${cx}" y="${cy - 4}" class="donut-total" text-anchor="middle">${total}</text>
+      <text x="${cx}" y="${cy + 20}" class="donut-label" text-anchor="middle">${total === 1 ? 'runde' : 'runder'}</text>
+    </svg>
+    <table class="grid pairs-legend"><thead><tr><th>Makkerpar</th><th class="num">Runder</th><th class="num">Andel</th></tr></thead><tbody>${legend}</tbody></table>
+  </div>`;
+}
 
 // Point pr. spiller over runderne: x = runde, y = samlet score. Melderen får en udfyldt cirkel,
 // makkeren en åben cirkel. Hver spiller har en fast farve efter plads (ikke efter placering).
@@ -788,13 +855,17 @@ function historyChart(players, rounds) {
 async function showStats() {
   const s = await request('stats');
   if (!s) return;
+  showModal(`<h2>Statistik (all time)</h2>${statsHtml(s)}`, true);
+}
+
+// Statistiktabellerne i tre kolonner – bruges både for alle aftener og for én aften.
+function statsHtml(s) {
   const pct = (won, played) => (played ? `${Math.round((100 * won) / played)} %` : '–');
   // Gennemsnitligt antal stik over (+) eller under (−) målet; ikke for nolo-meldinger.
   const diff = d => (d == null ? '–' : `${d > 0 ? '+' : d < 0 ? '−' : ''}${Math.abs(d).toLocaleString('da-DK', { maximumFractionDigits: 1 })}`);
   const table = (head, rows, cols) => `<table class="grid"><thead><tr>${head}</tr></thead>
     <tbody>${rows || `<tr><td colspan="${cols}" class="muted">Ingen data endnu.</td></tr>`}</tbody></table>`;
-  showModal(`<h2>Statistik (all time)</h2>
-    <div class="stats-grid">
+  return `<div class="stats-grid">
       <div class="stats-col">
         <h3>Samlet</h3>
         ${table('<th>Spiller</th><th class="num">Aftener</th><th class="num">Runder</th><th class="num">Point</th>',
@@ -817,7 +888,7 @@ async function showStats() {
         ${table('<th>Melding</th><th class="num">Meldt</th><th class="num">Gået hjem</th><th class="num">Sandsynlighed</th><th class="num" title="Gennemsnitligt antal stik over eller under målet">Over/under</th>',
           s.bids.map(r => `<tr><td>${esc(r.label)}</td><td class="num">${r.played}</td><td class="num">${r.won}</td><td class="num">${pct(r.won, r.played)}</td><td class="num">${diff(r.diff)}</td></tr>`).join(''), 5)}
       </div>
-    </div>`, true);
+    </div>`;
 }
 
 // ---------- Afspiller ----------

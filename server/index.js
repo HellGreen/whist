@@ -339,6 +339,7 @@ function tableView(id) {
     reserved: t.reserved,
     rules: t.rules,
     mySeat: seat,
+    sessionId: t.sessionId,
     seats: t.seats.map(p => p && {
       id: p, name: nameOf(p), online: isOnline(p), present: t.present.has(p), ready: t.ready.has(p),
       bot: isBot(p) ? AI.PROFILES[bots.get(p)]?.label ?? 'AI' : null,
@@ -512,8 +513,8 @@ io.on('connection', socket => {
     if (!replay) throw new UserError('Runden kan ikke afspilles');
     return replay;
   });
-  on('stats', () => {
-    const stats = db.stats();
+  on('stats', sessionId => {
+    const stats = db.stats(sessionId ? Number(sessionId) : null);
     const rank = r => bidRank(NOLOS.some(x => x.key === r.kind)
       ? { nolo: r.kind } : { n: r.level, suffix: r.kind === 'plain' ? null : r.kind });
     stats.bids.sort((a, b) => rank(a) - rank(b));

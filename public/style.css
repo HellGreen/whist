@@ -18,6 +18,8 @@
   --series-2: #eb6834;
   --series-3: #1baf7a;
   --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
 }
 
 /* Mørkt tema: vælges med knappen i topbjælken, ellers følges systemets indstilling.
@@ -36,6 +38,8 @@
   --series-2: #d95926;
   --series-3: #199e70;
   --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -53,6 +57,8 @@
     --series-2: #d95926;
     --series-3: #199e70;
     --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
     color-scheme: dark;
   }
 }
@@ -443,3 +449,12 @@ table.rounds tr:not(.lost) td.result { color: var(--accent); }
 .thinking-dots span:nth-child(2) { animation-delay: .4s; }
 .thinking-dots span:nth-child(3) { animation-delay: .8s; }
 @keyframes dot { 0%, 60%, 100% { opacity: .25; } 20%, 40% { opacity: 1; } }
+
+/* ---------- Makkerpar (cirkeldiagram) ---------- */
+.pairs-chart { display: flex; align-items: center; justify-content: center; gap: 48px; flex-wrap: wrap; padding: 8px 0; }
+.pairs-chart svg { width: min(340px, 80vw); height: auto; }
+.pairs-chart .slice { stroke: var(--panel); stroke-width: 2; }
+.pairs-chart .donut-total { fill: var(--ink); font-size: 40px; font-weight: 700; }
+.pairs-chart .donut-label { fill: var(--muted); font-size: 15px; }
+.pairs-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 8px; vertical-align: -1px; }
+.pairs-legend tr.none td { color: var(--muted); }

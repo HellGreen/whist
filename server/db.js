@@ -276,35 +276,38 @@ export function openDb(file) {
           rounds: s.round_count, players: sessionPlayers(s.id), totals: sessionTotals(s.id) }));
     },
 
-    stats() {
+    // Statistik for alle spilleaftener, eller kun for én (`sessionId`).
+    stats(sessionId = null) {
+      const session = '(?1 IS NULL OR r.session_id = ?1)';
+      const all = sql => q(sql).all(sessionId);
       return {
-        totals: q(`
+        totals: all(`
           SELECT p.name, COUNT(DISTINCT r.session_id) AS sessions, COUNT(*) AS rounds, SUM(rs.points) AS points
           FROM round_scores rs JOIN rounds r ON r.id = rs.round_id JOIN players p ON p.id = rs.player_id
-          GROUP BY p.id ORDER BY points DESC`).all(),
-        declarer: q(`
+          WHERE ${session} GROUP BY p.id ORDER BY points DESC`),
+        declarer: all(`
           SELECT p.name, r.bid_kind AS kind, COUNT(*) AS played, SUM(r.won) AS won,
             AVG(CASE WHEN r.bid_level IS NOT NULL THEN r.team_tricks - r.bid_level END) AS diff
           FROM rounds r JOIN players p ON p.id = r.declarer_id
-          GROUP BY p.id, r.bid_kind ORDER BY p.name, played DESC`).all(),
+          WHERE ${session} GROUP BY p.id, r.bid_kind ORDER BY p.name, played DESC`),
         // Hver melding (fx "8 gode", "Sol"); sorteres efter rangorden i server/index.js.
-        bids: q(`
+        bids: all(`
           SELECT r.bid_label AS label, r.bid_kind AS kind, r.bid_level AS level, COUNT(*) AS played, SUM(r.won) AS won,
             AVG(CASE WHEN r.bid_level IS NOT NULL THEN r.team_tricks - r.bid_level END) AS diff
-          FROM rounds r GROUP BY r.bid_label`).all(),
-        pairs: q(`
+          FROM rounds r WHERE ${session} GROUP BY r.bid_label`),
+        pairs: all(`
           SELECT d.name AS declarer, m.name AS partner, COUNT(*) AS played, SUM(r.won) AS won
           FROM rounds r JOIN players d ON d.id = r.declarer_id JOIN players m ON m.id = r.partner_id
-          WHERE r.solo = 0 GROUP BY d.id, m.id ORDER BY played DESC`).all(),
-        thinking: q(`
+          WHERE r.solo = 0 AND ${session} GROUP BY d.id, m.id ORDER BY played DESC`),
+        thinking: all(`
           SELECT p.name,
-            (SELECT AVG(think_ms) FROM round_bids b WHERE b.player_id = p.id) AS bid_avg,
-            (SELECT COUNT(think_ms) FROM round_bids b WHERE b.player_id = p.id) AS bids,
-            (SELECT AVG(think_ms) FROM round_plays x WHERE x.player_id = p.id) AS play_avg,
-            (SELECT MAX(think_ms) FROM round_plays x WHERE x.player_id = p.id) AS play_max,
-            (SELECT COUNT(think_ms) FROM round_plays x WHERE x.player_id = p.id) AS plays
+            (SELECT AVG(b.think_ms) FROM round_bids b JOIN rounds r ON r.id = b.round_id WHERE b.player_id = p.id AND ${session}) AS bid_avg,
+            (SELECT COUNT(b.think_ms) FROM round_bids b JOIN rounds r ON r.id = b.round_id WHERE b.player_id = p.id AND ${session}) AS bids,
+            (SELECT AVG(x.think_ms) FROM round_plays x JOIN rounds r ON r.id = x.round_id WHERE x.player_id = p.id AND ${session}) AS play_avg,
+            (SELECT MAX(x.think_ms) FROM round_plays x JOIN rounds r ON r.id = x.round_id WHERE x.player_id = p.id AND ${session}) AS play_max,
+            (SELECT COUNT(x.think_ms) FROM round_plays x JOIN rounds r ON r.id = x.round_id WHERE x.player_id = p.id AND ${session}) AS plays
           FROM players p WHERE p.bot_profile IS NULL
-          ORDER BY p.name`).all().filter(r => r.bids || r.plays),
+          ORDER BY p.name`).filter(r => r.bids || r.plays),
       };
     },
   };
