@@ -97,7 +97,9 @@ const MIGRATIONS = [
 export function openDb(file) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
-  db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
+  // WAL virker ikke pålideligt på netværksdrev (udviklingsmaskinen kører fra K:), så kun WAL på Linux-serveren.
+  const journalMode = process.platform === 'win32' ? 'DELETE' : 'WAL';
+  db.exec(`PRAGMA journal_mode = ${journalMode}; PRAGMA foreign_keys = ON;`);
   db.exec(SCHEMA);
   for (const [tableName, column, type] of MIGRATIONS) {
     const exists = db.prepare(`PRAGMA table_info(${tableName})`).all().some(c => c.name === column);
