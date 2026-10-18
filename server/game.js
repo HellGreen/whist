@@ -285,8 +285,8 @@ function beginTricks(s) {
 
 // ---------- Fordækt kort ----------
 
-// Har melderen ingen kort i makker-essets kulør, kan vedkommende inden første udspil lægge et
-// vilkårligt kort fordækt. Det tæller som laveste kort i essets kulør og må kun bruges til at
+// Har melderen ingen kort i makker-essets kulør (efter katten), skal vedkommende inden første udspil
+// lægge et vilkårligt kort fordækt. Det tæller som laveste kort i essets kulør og må kun bruges til at
 // spille ud i kuløren eller lægges, første gang kuløren spilles. Det vises aldrig for bordet.
 function mayCover(s) {
   const c = s.contract;
@@ -297,11 +297,9 @@ function mayCover(s) {
 export function cover(s, seat, card) {
   expectTurn(s, seat, 'cover');
   const c = s.contract;
-  if (card != null) {
-    if (!s.hands[seat].includes(card)) throw new UserError('Vælg et kort fra din hånd');
-    s.hands[seat] = s.hands[seat].filter(x => x !== card);
-    c.covered = card;
-  }
+  if (!s.hands[seat].includes(card)) throw new UserError('Vælg et kort fra din hånd at lægge fordækt');
+  s.hands[seat] = s.hands[seat].filter(x => x !== card);
+  c.covered = card;
   beginTricks(s);
 }
 

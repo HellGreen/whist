@@ -317,7 +317,7 @@ function fallbackDecision(g, seat) {
     case 'halveTrump': return { type: 'halveTrump', trump: G.SUITS.find(s => s !== g.contract.ace[0]) };
     case 'vip': return { type: 'vip', accept: true };
     case 'exchange': return { type: 'exchange', take: false };
-    case 'cover': return { type: 'cover', card: null };
+    case 'cover': return { type: 'cover', card: g.hands[seat][0] };
     default: return { type: 'play', card: G.legalCards(g, seat)[0] };
   }
 }
@@ -509,7 +509,7 @@ io.on('connection', socket => {
   on('game:vip', game((g, seat, accept) => G.vip(g, seat, !!accept)));
   on('game:exchange', game((g, seat, take) => G.exchange(g, seat, !!take)));
   on('game:discard', game((g, seat, cards) => G.discard(g, seat, cards)));
-  on('game:cover', game((g, seat, card) => G.cover(g, seat, card ?? null)));
+  on('game:cover', game((g, seat, card) => G.cover(g, seat, card)));
   on('game:play', game((g, seat, card) => G.play(g, seat, card)));
 
   on('history:list', () => db.sessionList());

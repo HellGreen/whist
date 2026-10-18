@@ -8,8 +8,9 @@ const rules = defaultRules();
 
 // Usorteret bunke: plads 0 får alle spar, 1 hjerter, 2 klør, 3 ruder; katten er de 3 jokere.
 const fixedRound = (dealer = 3) => G.newRound(dealer, rules, G.makeDeck());
-// Melderen i fixedRound er renonce i makker-essets kulør og springer det fordækte kort over.
-const noCover = s => { if (s.phase === 'cover') G.cover(s, s.turn, null); };
+// Melderen i fixedRound er ofte renonce i makker-essets kulør og skal lægge et kort fordækt.
+// Testene nedenfor handler ikke om det, så der lægges et kort, som de ikke selv spiller.
+const noCover = s => { if (s.phase === 'cover') G.cover(s, s.turn, G.sortCards(s.hands[s.turn]).at(-4)); };
 
 test('rangorden: gode slår halve, sol ligger mellem 9 og 9+', () => {
   assert.ok(bidRank({ n: 8, suffix: 'gode' }) > bidRank({ n: 8, suffix: 'halve' }));
@@ -471,7 +472,7 @@ test('fordækt kort: skal lægges når essets kulør spilles, og må ikke smides
   assert.ok(!G.legalCards(s, 0).includes('S3'));
 });
 
-test('fordækt kort: intet valg når melderen har kort i essets kulør, og det er frivilligt', () => {
+test('fordækt kort: intet valg når melderen har kort i essets kulør; ellers er det tvunget', () => {
   const s = fixedRound(3);
   G.bid(s, 0, { n: 7, suffix: null });
   for (const seat of [1, 2, 3]) G.bid(s, seat, null);
@@ -479,7 +480,6 @@ test('fordækt kort: intet valg når melderen har kort i essets kulør, og det e
   G.exchange(s, 0, false);
   assert.equal(s.phase, 'play');
   const t = coverRound();
-  G.cover(t, 0, null);
-  assert.equal(t.phase, 'play');
-  assert.equal(t.hands[0].length, 13);
+  assert.throws(() => G.cover(t, 0, null), /fordækt/);
+  assert.equal(t.phase, 'cover');
 });

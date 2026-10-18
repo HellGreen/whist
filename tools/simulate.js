@@ -73,7 +73,7 @@ function act(bot) {
       else socket.emit('game:discard', [...g.hand].sort(() => Math.random() - 0.5).slice(0, 3));
       break;
     case 'cover':
-      socket.emit('game:cover', Math.random() < 0.7 ? pick(g.hand) : null);
+      socket.emit('game:cover', pick(g.hand));
       break;
     case 'play':
       socket.emit('game:play', pick(g.legal));

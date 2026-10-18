@@ -598,11 +598,10 @@ function choiceHtml(t, g) {
         <div class="row"><button class="primary" data-action="discard" ${ui.discard.length === 3 ? '' : 'disabled'}>Læg kortene</button></div>`;
     }
     case 'cover':
-      return `<p>Du har ingen kort i makker-essets kulør (${cardText(c.ace)}). Du kan lægge et kort fordækt – det tæller
+      return `<p>Du har ingen kort i makker-essets kulør (${cardText(c.ace)}). Vælg et kort at lægge fordækt – det tæller
         som laveste ${SUIT_SYM[c.ace[0]]} og bruges til at spille ud til makker-esset eller lægges, første gang kuløren
         spilles. Ingen andre ser, hvilket kort det er.</p>
-        <div class="row"><button class="primary" data-action="cover" ${ui.cover ? '' : 'disabled'}>Læg ${ui.cover ? cardText(ui.cover) : 'kortet'} fordækt</button>
-        <button data-action="noCover">Intet fordækt kort</button></div>`;
+        <div class="row"><button class="primary" data-action="cover" ${ui.cover ? '' : 'disabled'}>Læg ${ui.cover ? cardText(ui.cover) : 'kortet'} fordækt</button></div>`;
     default:
       return '';
   }
@@ -1198,7 +1197,6 @@ const actions = {
     render();
   },
   cover: () => socket.emit('game:cover', ui.cover),
-  noCover: () => socket.emit('game:cover', null),
   play: d => socket.emit('game:play', d.card),
   standings: () => setModal({ type: 'standings', tab: 'table', wide: true }),
   history: () => showHistory(),

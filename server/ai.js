@@ -123,7 +123,7 @@ function chooseBid(s, seat, p) {
 function chooseCover(s, seat) {
   const hand = s.hands[seat], trump = trumpSuit(s);
   const side = hand.filter(x => !isJoker(x) && suitOf(x) !== trump);
-  if (!side.length) return null;
+  if (!side.length) return lowest(hand.filter(x => !isJoker(x))) ?? hand[0]; // kun trumf og jokere
   const len = x => side.filter(y => suitOf(y) === suitOf(x)).length;
   return side.sort((a, b) => len(a) - len(b) || rankOf(a) - rankOf(b))[0];
 }

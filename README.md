@@ -258,7 +258,7 @@ valgt følgende, som er bekræftet (alt kan justeres i `server/bids.js`, `server
   første stik.
 - **Katten:** man tager hele katten og lægger 3 kort, eller beholder sine kort.
 - **Fordækt kort:** har melderen ingen kort i makker-essets kulør (efter katten), kan vedkommende inden første
-  udspil lægge et vilkårligt kort fordækt – også en joker. Det er frivilligt. Kortet tæller som laveste kort i
+  udspil lægge et vilkårligt kort fordækt – også en joker. Det er tvunget. Kortet tæller som laveste kort i
   essets kulør og må kun bruges til at spille ud i kuløren (til makker-esset) eller lægges, første gang kuløren
   spilles – aldrig smides på en anden kulør. Det vises aldrig for bordet, kun i resultatet efter runden.
 - **Esset i nolo:** i sol, ren sol, bordlægger og ren bordlægger tæller esset som 1 (laveste kort).
