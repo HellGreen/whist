@@ -52,16 +52,64 @@ Miljøvariabler:
 
 ## Drift på Linux-server
 
-Første gang:
+Koden går via et privat GitHub-repo: udviklingsmaskinen pusher, og serverne henter selv. Serverne skal altså kun
+kunne komme *ud* på internettet – ingen indgående forbindelser. Samme fremgangsmåde bruges på test-serveren og
+hosting-serveren.
 
-1. Installer Node.js 22 LTS eller nyere, og opret en systembruger, som spillet kører som:
+```
+udviklingsmaskine ──git push──▶ github.com/HellGreen/whist ◀──git fetch── server (sudo /opt/whist/update.sh)
+```
+
+### Første gang på udviklingsmaskinen
+
+Opret et tomt, privat repo `whist` på github.com (uden README), og push:
+
+```sh
+git remote add origin https://github.com/HellGreen/whist.git
+git push -u origin main
+```
+
+Derefter er det bare `git push` efter hver commit, der skal ud på serverne.
+
+### Første gang på en server
+
+Alle kommandoer køres i en terminal på serveren.
+
+1. Installer git og Node.js 22 LTS eller nyere, og opret en systembruger, som spillet kører som:
 
    ```sh
+   sudo apt install git     # Node.js 22: se https://nodejs.org/en/download (fx via NodeSource)
    sudo useradd --system --home /opt/whist --shell /usr/sbin/nologin whist
-   sudo mkdir -p /opt/whist && sudo chown whist: /opt/whist
    ```
 
-2. Opret en systemd-service, `/etc/systemd/system/whist.service`:
+2. Lav en nøgle, som serveren kan læse repoet med (en *deploy key* – den giver kun læseadgang til dette ene repo):
+
+   ```sh
+   sudo mkdir -p /etc/whist
+   sudo ssh-keygen -t ed25519 -N '' -C "whist@$(hostname)" -f /etc/whist/github_key
+   sudo chown -R whist: /etc/whist
+   sudo cat /etc/whist/github_key.pub
+   ```
+
+   Kopiér linjen, der bliver vist, ind på GitHub under repoet → *Settings* → *Deploy keys* → *Add deploy key*
+   (lad "Allow write access" være slået fra). Hver server har sin egen nøgle.
+
+3. Hent koden til `/opt/whist`:
+
+   ```sh
+   SSHCMD="ssh -i /etc/whist/github_key -o IdentitiesOnly=yes -o UserKnownHostsFile=/etc/whist/known_hosts -o StrictHostKeyChecking=accept-new"
+   sudo mkdir -p /opt/whist && sudo chown whist: /opt/whist
+   sudo -u whist -H git -c core.sshCommand="$SSHCMD" clone git@github.com:HellGreen/whist.git /opt/whist
+   sudo -u whist git -C /opt/whist config core.sshCommand "$SSHCMD"
+   ```
+
+   `/opt/whist` skal være tom (eller ikke findes), før `clone`. Ligger der noget fra et tidligere forsøg, så flyt
+   det væk – men gem `data/`, hvis der er en database, du vil beholde, og læg den tilbage bagefter.
+
+   Blokerer netværket udgående port 22, så brug GitHubs ssh på port 443 i stedet: erstat
+   `git@github.com:HellGreen/whist.git` med `ssh://git@ssh.github.com:443/HellGreen/whist.git`.
+
+4. Opret en systemd-service, `/etc/systemd/system/whist.service`:
 
    ```ini
    [Unit]
@@ -79,10 +127,22 @@ Første gang:
    WantedBy=multi-user.target
    ```
 
-   `sudo systemctl enable whist` (den startes første gang af `deploy.sh`).
+   Tjek stien til node med `which node` – står den ikke i `/usr/bin/node`, så ret `ExecStart`.
 
-3. Sæt en reverse proxy med HTTPS foran. Med [Caddy](https://caddyserver.com) er det to linjer i `Caddyfile`
-   (Caddy henter selv et certifikat og håndterer websockets):
+5. Slå servicen til, og start spillet:
+
+   ```sh
+   sudo systemctl daemon-reload
+   sudo systemctl enable whist
+   sudo /opt/whist/update.sh
+   ```
+
+   Spillet svarer nu på `http://localhost:3000` på serveren (og `http://<serverens-ip>:3000` fra andre maskiner på
+   samme netværk, hvis firewallen tillader det). Det er nok på test-serveren.
+
+6. Kun på serveren, der skal kunne nås udefra: sæt en reverse proxy med HTTPS foran. Med
+   [Caddy](https://caddyserver.com) er det to linjer i `Caddyfile` (Caddy henter selv et certifikat og håndterer
+   websockets):
 
    ```
    whist.ditdomæne.dk {
@@ -94,23 +154,29 @@ Første gang:
    Domænet skal pege på serveren, og port 80 og 443 skal være åbne, så Caddy kan hente certifikatet. Port 3000
    skal ikke være åben udadtil.
 
-Opdatering (og første installation) fra udviklingsmaskinen, i Git Bash:
+### Opdatering
+
+Push fra udviklingsmaskinen, og kør så på serveren:
 
 ```sh
-./deploy.sh bruger@server      # WHIST_DIR=/sti ./deploy.sh ... hvis ikke /opt/whist
+sudo /opt/whist/update.sh                       # nyeste main
+sudo WHIST_BRANCH=afprøvning /opt/whist/update.sh   # en anden gren, fx på test-serveren
 ```
 
-Scriptet pakker den committede kode (`git archive HEAD`), sender den over ssh, kører `npm ci --omit=dev` og genstarter
-servicen. Ændringer, der ikke er committet, kommer ikke med, og `data/` på serveren røres ikke. Brugeren på
-serveren skal have `sudo`.
+Scriptet henter koden fra GitHub, kører `npm ci --omit=dev` og genstarter servicen. Kun det, der er pushet, kommer
+med, og `data/` på serveren røres ikke.
 
-Databasen følger ikke med (`data/` er i `.gitignore`), så serveren starter med en tom database. Skal den lokale
-med, så stop servicen og kopiér den over én gang:
+### Databasen
+
+Databasen følger ikke med (`data/` er i `.gitignore`), så en ny server starter med en tom database. Skal en
+eksisterende database med, så få filen `whist.db` over på serveren (USB, scp fra en maskin på samme netværk e.l.),
+fx til `/tmp/whist.db`, og kør:
 
 ```sh
-ssh -t bruger@server 'sudo systemctl stop whist'
-scp data/whist.db bruger@server:/tmp/
-ssh -t bruger@server 'sudo rm -f /opt/whist/data/whist.db-wal /opt/whist/data/whist.db-shm && sudo install -o whist -g whist -m 640 -D /tmp/whist.db /opt/whist/data/whist.db && sudo systemctl start whist'
+sudo systemctl stop whist
+sudo rm -f /opt/whist/data/whist.db-wal /opt/whist/data/whist.db-shm
+sudo install -o whist -g whist -m 640 -D /tmp/whist.db /opt/whist/data/whist.db
+sudo systemctl start whist
 ```
 
 Databasen ligger i `data/whist.db`. Tag backup af den mappe. Spillets tilstand gemmes efter hver handling, så et
