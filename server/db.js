@@ -84,6 +84,8 @@ CREATE TABLE IF NOT EXISTS round_bids (
 );
 `;
 
+const NOLO_KINDS = ['sol', 'rensol', 'bord', 'renbord'];
+
 // Kolonner tilføjet efter første version.
 const MIGRATIONS = [
   ['rounds', 'replay', 'TEXT'], // fuldt forløb (kort, meldinger, kat, stik) som JSON til afspilleren
@@ -221,7 +223,13 @@ export function openDb(file) {
     roundReplay(roundId) {
       const r = q('SELECT session_id, round_no, replay FROM rounds WHERE id = ?').get(roundId);
       if (!r?.replay) return null;
-      return { roundNo: r.round_no, players: sessionPlayers(r.session_id), ...JSON.parse(r.replay) };
+      // Nabo-runder i samme spilleaften, der også kan afspilles.
+      const ids = q('SELECT id FROM rounds WHERE session_id = ? AND replay IS NOT NULL ORDER BY round_no').all(r.session_id).map(x => x.id);
+      const i = ids.indexOf(Number(roundId));
+      return {
+        roundNo: r.round_no, sessionId: r.session_id, prevId: ids[i - 1] ?? null, nextId: ids[i + 1] ?? null,
+        players: sessionPlayers(r.session_id), ...JSON.parse(r.replay),
+      };
     },
 
     sessionRounds(id) {
@@ -242,7 +250,9 @@ export function openDb(file) {
         playedAt: r.played_at,
         bidLabel: r.bid_label,
         declarer: r.declarer_name,
-        partner: r.solo ? (r.partner_id ? 'selvmakker' : 'alene') : r.partner_name,
+        partner: NOLO_KINDS.includes(r.bid_kind) ? '–' : r.solo ? (r.partner_id ? 'selvmakker' : 'alene') : r.partner_name,
+        declarerId: r.declarer_id,
+        partnerId: r.solo ? null : r.partner_id,
         teamTricks: r.team_tricks,
         won: !!r.won,
         scores: scores[r.id] ?? {},

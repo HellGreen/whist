@@ -115,6 +115,10 @@ darkQuery.addEventListener('change', () => render());
 function render() {
   const app = document.getElementById('app');
   if (!state) return;
+  if (replay) {
+    renderReplay();
+    return renderModal();
+  }
   if (!state.me) {
     app.innerHTML = storage.get(NAME_KEY) ? '<p class="connecting">Forbinder…</p>' : nameScreen();
     app.querySelector('input')?.focus();
@@ -661,7 +665,6 @@ const replayButton = (r, from) => (r.hasReplay
 
 function renderModal() {
   const el = document.getElementById('modal');
-  if (modal?.type === 'replay') return renderReplay(el);
   if (!modal) {
     el.classList.add('hidden');
     el.innerHTML = '';
@@ -680,67 +683,91 @@ function renderModal() {
 }
 
 function setModal(next) {
-  if (modal?.type === 'replay') clearInterval(modal.timer);
   modal = next;
   renderModal();
 }
 
 const showModal = (html, wide = false) => setModal({ type: 'html', html, wide });
 
-// Historik: spilleaftener efter dato og klokkeslæt; vælges én, vises dens runder nedenunder.
-async function showHistory(openId = null) {
+// Historik: åbner direkte på den seneste spilleaften (eller `sessionId`) med fanerne Tabel og Graf.
+// Andre aftener vælges i rullelisten øverst.
+async function showHistory(sessionId = null, tab = 'table') {
   const list = await request('history:list');
   if (!list) return;
-  setModal({ type: 'history', list, openId: null, detail: null });
-  if (openId) await toggleHistorySession(openId);
-}
-
-async function toggleHistorySession(id) {
-  if (modal?.type !== 'history') return;
-  if (modal.openId === id) {
-    modal.openId = null;
-    return renderModal();
-  }
-  const detail = await request('history:session', id);
-  if (!detail || modal?.type !== 'history') return;
-  modal.openId = id;
-  modal.detail = detail;
-  renderModal();
+  const id = sessionId ?? list[0]?.id ?? null;
+  const detail = id ? await request('history:session', id) : null;
+  setModal({ type: 'history', list, detail, tab, wide: true });
 }
 
 function historyHtml(m) {
-  if (!m.list.length) return '<h2>Historik</h2><p class="muted">Der er ikke spillet nogen runder endnu.</p>';
-  const items = m.list.map(s => {
-    const ranked = [...s.players].sort((a, b) => (s.totals[b.id] ?? 0) - (s.totals[a.id] ?? 0));
-    const open = m.openId === s.id;
-    let body = '';
-    if (open) {
-      const d = m.detail;
-      const rows = d.rounds.map(r => `<tr class="${r.won ? '' : 'lost'}">
-        <td>${r.roundNo}</td><td>${esc(r.bidLabel)}</td><td>${esc(r.declarer)}</td><td>${esc(r.partner ?? '')}</td>
-        <td class="result">${r.won ? '✔' : '✘'}</td><td>${replayButton(r, `history:${s.id}`)}</td></tr>`).join('');
-      body = `<div class="session-body">
-        ${rows ? `<table class="grid rounds"><thead><tr><th>#</th><th>Melding</th><th>Melder</th><th>Makker</th><th></th><th></th></tr></thead><tbody>${rows}</tbody></table>`
-          : '<p class="muted">Ingen runder spillet.</p>'}
-        <button data-action="historySession" data-id="${s.id}">Vis fuld stilling</button>
-      </div>`;
-    }
-    return `<li class="${open ? 'open' : ''}">
-      <button class="session-head" data-action="historyToggle" data-id="${s.id}">
-        <span class="when"><b>${fmtDay(s.startedAt)}</b> kl. ${fmtTime(s.startedAt)}</span>
-        <span class="who">${ranked.map(p => `${esc(p.name)} ${fmtPts(s.totals[p.id])}`).join(' · ')}</span>
-        <span class="muted">${s.rounds} ${s.rounds === 1 ? 'runde' : 'runder'} · ${STATUS_LABEL[s.status] ?? s.status}</span>
-      </button>${body}</li>`;
-  }).join('');
-  return `<h2>Historik</h2><p class="muted">Vælg en spilleaften for at se runderne. Tryk ▶ for at afspille en runde.</p>
-    <ul class="sessions">${items}</ul>`;
+  if (!m.list.length || !m.detail) return '<h2>Historik</h2><p class="muted">Der er ikke spillet nogen runder endnu.</p>';
+  const d = m.detail;
+  const options = m.list.map(s => `<option value="${s.id}" ${s.id === d.id ? 'selected' : ''}>${fmtDay(s.startedAt)} kl. ${fmtTime(s.startedAt)} · ${s.players.map(p => p.name).join(', ')} · ${s.rounds} ${s.rounds === 1 ? 'runde' : 'runder'}</option>`).join('');
+  const tab = (key, label) => `<button class="tab ${m.tab === key ? 'active' : ''}" data-action="historyTab" data-tab="${key}">${label}</button>`;
+  return `<h2>Historik</h2>
+    <div class="hist-bar">
+      <div class="tabs">${tab('table', 'Tabel')}${tab('chart', 'Graf')}</div>
+      <select data-history-select aria-label="Vælg spilleaften">${options}</select>
+    </div>
+    ${m.tab === 'chart' ? historyChart(d.players, d.rounds) : standingsTable(d.players, d.rounds, `history:${d.id}`)}`;
 }
 
-async function showSession(id) {
-  const s = await request('history:session', id);
-  if (!s) return;
-  showModal(`<button data-action="historyBack" data-id="${s.id}">← Tilbage</button>
-    <h2>Spilleaften ${fmtDate(s.startedAt)}</h2>${standingsTable(s.players, s.rounds, `history:${s.id}`)}`);
+// Point pr. spiller over runderne: x = runde, y = samlet score. Melderen får en udfyldt cirkel,
+// makkeren en åben cirkel. Hver spiller har en fast farve efter plads (ikke efter placering).
+function historyChart(players, rounds) {
+  if (!rounds.length) return '<p class="muted">Ingen runder spillet endnu.</p>';
+  const W = 1000, H = 440, L = 56, R = 170, T = 16, B = 40;
+  const n = rounds.length;
+  const totals = players.map(p => {
+    let sum = 0;
+    return [0, ...rounds.map(r => (sum += r.scores[p.id] ?? 0))];
+  });
+  const values = totals.flat();
+  let lo = Math.min(0, ...values), hi = Math.max(0, ...values);
+  if (lo === hi) hi = lo + 1;
+  const raw = (hi - lo) / 5, mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 5, 10].map(f => f * mag).find(s => s >= raw);
+  lo = Math.floor(lo / step) * step;
+  hi = Math.ceil(hi / step) * step;
+  const x = i => L + (i * (W - L - R)) / n;
+  const y = v => T + ((hi - v) * (H - T - B)) / (hi - lo);
+  const color = i => `var(--series-${i + 1})`;
+
+  const grid = [];
+  for (let v = lo; v <= hi + step / 2; v += step) {
+    grid.push(`<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="${Math.abs(v) < step / 2 ? 'zero' : 'gridline'}"/>
+      <text x="${L - 8}" y="${y(v) + 4}" class="axis" text-anchor="end">${fmtPts(Math.round(v * 1000) / 1000).replace('+', '')}</text>`);
+  }
+  const every = Math.ceil(n / 20);
+  const xTicks = [];
+  for (let i = 0; i <= n; i += every) xTicks.push(`<text x="${x(i)}" y="${H - B + 18}" class="axis" text-anchor="middle">${i}</text>`);
+
+  const lines = players.map((p, pi) => `<path d="${totals[pi].map((v, i) => `${i ? 'L' : 'M'}${x(i)},${y(v)}`).join('')}" class="series-line" stroke="${color(pi)}"/>`).join('');
+  const markers = rounds.map((r, ri) => players.map((p, pi) => {
+    const cx = x(ri + 1), cy = y(totals[pi][ri + 1]);
+    if (p.id === r.declarerId) return `<circle cx="${cx}" cy="${cy}" r="5.5" class="mark-declarer" fill="${color(pi)}"/>`;
+    if (p.id === r.partnerId) return `<circle cx="${cx}" cy="${cy}" r="5" class="mark-partner" stroke="${color(pi)}"/>`;
+    return '';
+  }).join('')).join('');
+
+  // Navn og total for enden af hver linje, skubbet fra hinanden så de ikke overlapper.
+  const ends = players.map((p, pi) => ({ pi, y: y(totals[pi][n]) })).sort((a, b) => a.y - b.y);
+  for (let i = 1; i < ends.length; i++) ends[i].y = Math.max(ends[i].y, ends[i - 1].y + 18);
+  const labels = ends.map(({ pi, y: ly }) => `<text x="${x(n) + 10}" y="${ly + 4}" class="end-label"><tspan fill="${color(pi)}">●</tspan> ${esc(players[pi].name)} ${fmtPts(totals[pi][n])}</text>`).join('');
+
+  const hits = rounds.map((r, ri) => `<rect x="${x(ri + 0.5)}" y="${T}" width="${x(1) - x(0)}" height="${H - T - B}" class="hit" data-chart-round="${ri}"/>`).join('');
+  const legend = players.map((p, pi) => `<span><i style="background:${color(pi)}"></i>${esc(p.name)}</span>`).join('');
+
+  return `<div class="hist-chart" data-chart='${esc(JSON.stringify({ players: players.map(p => p.name), totals, rounds: rounds.map(r => ({ no: r.roundNo, label: r.bidLabel, declarer: r.declarer, partner: r.partner, won: r.won })) }))}'>
+    <div class="chart-legend">${legend}<span class="key"><b>●</b> melder <b>○</b> makker</span></div>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Samlet score pr. spiller efter hver runde">
+      ${grid.join('')}${xTicks.join('')}
+      <text x="${(L + W - R) / 2}" y="${H - 4}" class="axis" text-anchor="middle">Runde</text>
+      <line class="crosshair" x1="0" x2="0" y1="${T}" y2="${H - B}" visibility="hidden"/>
+      ${lines}${markers}${labels}${hits}
+    </svg>
+    <div class="chart-tip" hidden></div>
+  </div>`;
 }
 
 async function showStats() {
@@ -779,20 +806,37 @@ async function showStats() {
 }
 
 // ---------- Afspiller ----------
+// En runde afspilles på det rigtige bord med betjeningen i højre kolonne.
 // Trin 0: kortene er givet. Trin 1…B: ét bud pr. trin. Trin B+1: melding og kat.
 // Derefter ét spillet kort pr. trin. Alle trin vises med samme ventetid.
 
 const SPEEDS = [{ label: '>', ms: 2000 }, { label: '>>', ms: 1000 }, { label: '>>>', ms: 400 }];
+let replay = null; // { data, from, step, playing, speed, timer, bottom, hidden }
 
-async function openReplay(roundId, from) {
+async function openReplay(roundId, from, keep = {}) {
   const data = await request('history:replay', roundId);
   if (!data) return;
+  if (replay) clearInterval(replay.timer);
+  setModal(null);
   const mine = data.players.findIndex(p => p.id === state.me?.id);
-  setModal({
-    type: 'replay', data, from, step: 0, playing: false, speed: 1, timer: null,
+  replay = {
+    data, from, step: 0, playing: false, speed: keep.speed ?? 1, timer: null,
     bottom: mine >= 0 ? mine : 0, // egen plads nederst, hvis man var med
-    hidden: new Set(),
-  });
+    hidden: keep.hidden ?? new Set(),
+  };
+  document.getElementById('app').innerHTML = '';
+  if (keep.autoplay) replayPlay();
+  render();
+}
+
+function stopReplay() {
+  const from = replay?.from ?? '';
+  clearInterval(replay?.timer);
+  replay = null;
+  document.getElementById('app').innerHTML = '';
+  render();
+  if (from.startsWith('history:')) showHistory(Number(from.slice(8)));
+  else if (from === 'standings' && state.table?.game) setModal({ type: 'standings' });
 }
 
 const contractStep = data => data.bidLog.length + 1;
@@ -813,7 +857,7 @@ function replayState(data, step) {
   const trick = data.plays.slice(trickStart, count);
   const tricks = [0, 0, 0, 0];
   for (const w of data.trickWinners.slice(0, done)) tricks[w]++;
-  return { hands, kat, count, trick, winner: trick.length === 4 ? data.trickWinners[trickStart / 4] : null, tricks };
+  return { hands, kat, count, done, trick, winner: trick.length === 4 ? data.trickWinners[trickStart / 4] : null, tricks };
 }
 
 function replayCaption(data, step, rs) {
@@ -841,26 +885,33 @@ function replayCaption(data, step, rs) {
   return text;
 }
 
-function replayView(m) {
+// Bordet under afspilning: hver spiller med navneboks, stikbunke og hånd.
+// Venstre og højre: kortene lodret med 80 % overlap. Top og bund: vandret som i spillet.
+function replayTable(m) {
   const { data, step } = m, c = data.contract, rs = replayState(data, step);
   const rel = seat => POS[(seat - m.bottom + 4) % 4];
   const bidding = step < contractStep(data);
+  const acePlayed = data.plays.slice(0, rs.count).some(p => p.card === c.ace);
   const nextSeat = step === 0 ? data.bidLog[0]?.seat
     : bidding ? data.bidLog[step]?.seat ?? null
       : step < replayLastStep(data) ? data.plays[rs.count]?.seat : null;
-  const seats = data.players.map((p, seat) => {
+  const players = data.players.map((p, seat) => {
     const tags = [];
     if (seat === data.dealer) tags.push('Giver');
     if (!bidding && seat === c.declarer) tags.push('Melder');
-    if (!bidding && c.partner != null && seat === c.partner && seat !== c.declarer
-      && data.plays.slice(0, rs.count).some(p => p.card === c.ace)) tags.push('Makker');
-    const hand = m.hidden.has(seat)
-      ? backs(rs.hands[seat].length, true)
-      : sortCards(rs.hands[seat], c.nolo && !bidding).map(x => cardHtml(x, { small: true })).join('');
-    return `<div class="seat pos-${rel(seat)} ${nextSeat === seat ? 'turn' : ''}">
-      <div class="name">${esc(p.name)}${tags.map(x => `<span class="tag">${x}</span>`).join('')}</div>
-      ${step > contractStep(data) ? `<div class="info">${rs.tricks[seat]} stik</div>` : ''}
-      <div class="rp-hand">${hand}</div>
+    if (!bidding && c.partner != null && seat === c.partner && seat !== c.declarer && acePlayed) tags.push('Makker');
+    const cards = m.hidden.has(seat)
+      ? backs(rs.hands[seat].length)
+      : sortCards(rs.hands[seat], c.nolo && !bidding).map(x => cardHtml(x)).join('');
+    return `<div class="rp-player pos-${rel(seat)}">
+      <div class="seat-wrap">
+        <div class="seat ${nextSeat === seat ? 'turn' : ''}">
+          <div class="name">${esc(p.name)}</div>
+          ${tags.length ? `<div class="tags">${tags.map(x => `<span class="tag">${x}</span>`).join('')}</div>` : ''}
+        </div>
+        ${trickPile(rs.tricks[seat])}
+      </div>
+      <div class="rp-hand">${cards}</div>
     </div>`;
   }).join('');
   let center;
@@ -871,62 +922,94 @@ function replayView(m) {
       ? `<div class="kat"><div class="cards">${c.discards.map(x => cardHtml(x)).join('')}</div><div>Lagt</div></div>`
       : `<div class="kat"><div class="cards">${rs.kat.map(x => cardHtml(x)).join('')}</div><div>Katten (ikke taget)</div></div>`;
   } else {
-    center = rs.trick.map(p => `<div class="played pos-${rel(p.seat)} ${p.seat === rs.winner ? 'winner' : ''}">${cardHtml(p.card)}</div>`).join('');
+    center = rs.trick.map(p => `<div class="played pos-${rel(p.seat)} ${p.seat === rs.winner ? 'winner lifted' : ''}">${cardHtml(p.card)}</div>`).join('');
   }
-  const acePlayed = data.plays.slice(0, rs.count).some(p => p.card === c.ace);
   const corner = bidding ? '' : contractCorner({
     ...c, alone: c.nolo || !c.ace, partner: acePlayed || step === replayLastStep(data) ? c.partner : null,
   }, rs.tricks);
-  return `<div class="felt rp-felt">${seats}${corner}<div class="center">${center}</div></div>
-    <p class="rp-caption">${replayCaption(data, step, rs)}</p>`;
+  return `${players}${corner}<div class="center">${center}</div>`;
 }
 
-function renderReplay(el) {
-  const m = modal, last = replayLastStep(m.data);
-  if (!el.querySelector('#rp-view')) {
-    el.innerHTML = `<div class="box replay">
-      <button class="close" data-action="closeModal">Luk</button>
-      <button data-action="rpBack">← Tilbage</button>
-      <h2>Afspilning af runde ${m.data.roundNo}</h2>
-      <div id="rp-view"></div>
-      <div class="rp-controls">
-        <div class="row">
-          <button data-action="rpStep" data-to="first" title="Til start">⏮</button>
-          <button data-action="rpStep" data-to="prev" title="Et trin tilbage">◀</button>
-          <button class="primary" id="rp-play" data-action="rpToggle"></button>
-          <button data-action="rpStep" data-to="next" title="Et trin frem">▶</button>
-          <button data-action="rpStep" data-to="last" title="Til slut">⏭</button>
-          <span class="rp-speeds">${SPEEDS.map((s, i) => `<button data-action="rpSpeed" data-speed="${i}" title="${s.ms / 1000} sek. mellem hvert trin">${s.label}</button>`).join('')}</span>
-        </div>
-        <input type="range" id="rp-slider" min="0" max="${last}" value="0">
-        <div class="row">Vis kort: ${m.data.players.map((p, seat) => `<label><input type="checkbox" data-rp-hide="${seat}" ${m.hidden.has(seat) ? '' : 'checked'}> ${esc(p.name)}</label>`).join('')}</div>
+// Stikpanelet under afspilning: tom linje når et stik er i gang, prik når det er afgjort.
+function replayTrickPanel(m, rs) {
+  if (rs.count === 0) return '';
+  const short = name => esc(name.length > 8 ? name.slice(0, 7) + '…' : name);
+  const winners = m.data.trickWinners.slice(0, rs.done);
+  if (rs.count % 4) winners.push(null);
+  return `<div class="trick-panel"><h4>Stik</h4><table>
+    <thead><tr><th>#</th>${m.data.players.map(p => `<th title="${esc(p.name)}">${short(p.name)}</th>`).join('')}</tr></thead>
+    <tbody>${winners.map((w, i) => `<tr><td>${i + 1}</td>${m.data.players.map((_, s) => `<td>${s === w ? '●' : ''}</td>`).join('')}</tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+// Skelettet bygges én gang; derefter opdateres kun bord, paneler og knappernes tilstand,
+// så skyderen kan trækkes uden at blive erstattet undervejs.
+function renderReplay() {
+  const app = document.getElementById('app'), m = replay, data = m.data, last = replayLastStep(data);
+  if (!app.querySelector('#rp-screen')) {
+    app.innerHTML = `<div class="game" id="rp-screen">
+      <div class="table-area">
+        <div class="felt-wrap"><div class="felt" id="rp-table"></div></div>
+        <aside class="side">
+          <div class="dealer-info" id="rp-dealer"></div>
+          <div id="rp-tricks"></div>
+          <section class="panel rp-controls">
+            <p class="rp-caption" id="rp-caption"></p>
+            <div class="row">
+              <button data-action="rpStep" data-to="first" title="Til start">⏮</button>
+              <button data-action="rpStep" data-to="prev" title="Et trin tilbage">◀</button>
+              <button class="primary" id="rp-play" data-action="rpToggle"></button>
+              <button data-action="rpStep" data-to="next" title="Et trin frem">▶</button>
+              <button data-action="rpStep" data-to="last" title="Til slut">⏭</button>
+            </div>
+            <div class="row rp-speeds">${SPEEDS.map((s, i) => `<button data-action="rpSpeed" data-speed="${i}" title="${s.ms / 1000} sek. mellem hvert trin">${s.label}</button>`).join('')}</div>
+            <input type="range" id="rp-slider" min="0" max="${last}" value="0">
+            <div class="row">
+              <button data-action="rpRound" data-dir="prev" ${data.prevId ? '' : 'disabled'}>← Forrige runde</button>
+              <button data-action="rpRound" data-dir="next" ${data.nextId ? '' : 'disabled'}>Næste runde →</button>
+            </div>
+            <div class="rp-show">Vis kort:
+              ${data.players.map((p, seat) => `<label><input type="checkbox" data-rp-hide="${seat}" ${m.hidden.has(seat) ? '' : 'checked'}> ${esc(p.name)}</label>`).join('')}
+            </div>
+          </section>
+          <div class="round-box">
+            <div class="round-head">Afspilning · runde ${data.roundNo}</div>
+            <div class="round-buttons">
+              ${themeButton()}
+              <button class="danger" data-action="rpStop">Stop simulering</button>
+            </div>
+          </div>
+        </aside>
       </div>
     </div>`;
-    el.classList.remove('hidden');
   }
-  el.querySelector('#rp-view').innerHTML = replayView(m);
-  el.querySelector('#rp-slider').value = m.step;
-  el.querySelector('#rp-play').textContent = m.playing ? '⏸ Pause' : '▶ Afspil';
-  el.querySelectorAll('[data-action="rpSpeed"]').forEach(b => b.classList.toggle('selected', Number(b.dataset.speed) === m.speed));
+  const rs = replayState(data, m.step);
+  app.querySelector('#rp-table').innerHTML = replayTable(m);
+  app.querySelector('#rp-dealer').innerHTML = `Giver: <b>${esc(data.players[data.dealer]?.name ?? '?')}</b>`;
+  app.querySelector('#rp-tricks').innerHTML = replayTrickPanel(m, rs);
+  app.querySelector('#rp-caption').innerHTML = replayCaption(data, m.step, rs);
+  app.querySelector('#rp-slider').value = m.step;
+  app.querySelector('#rp-play').textContent = m.playing ? '⏸ Pause' : '▶ Afspil';
+  app.querySelectorAll('[data-action="rpSpeed"]').forEach(b => b.classList.toggle('selected', Number(b.dataset.speed) === m.speed));
 }
 
 function replayGoto(step) {
-  const last = replayLastStep(modal.data);
-  modal.step = Math.max(0, Math.min(last, step));
-  if (modal.step === last) replayPause();
-  renderModal();
+  const last = replayLastStep(replay.data);
+  replay.step = Math.max(0, Math.min(last, step));
+  if (replay.step === last) replayPause();
+  render();
 }
 
 function replayPause() {
-  clearInterval(modal.timer);
-  modal.playing = false;
+  clearInterval(replay.timer);
+  replay.playing = false;
 }
 
 function replayPlay() {
-  clearInterval(modal.timer);
-  if (modal.step === replayLastStep(modal.data)) modal.step = 0;
-  modal.playing = true;
-  modal.timer = setInterval(() => replayGoto(modal.step + 1), SPEEDS[modal.speed].ms);
+  clearInterval(replay.timer);
+  if (replay.step === replayLastStep(replay.data)) replay.step = 0;
+  replay.playing = true;
+  replay.timer = setInterval(() => replayGoto(replay.step + 1), SPEEDS[replay.speed].ms);
 }
 
 // ---------- Handlinger ----------
@@ -936,6 +1019,7 @@ const actions = {
     const theme = isDark() ? 'light' : 'dark';
     document.documentElement.dataset.theme = theme;
     storage.set(THEME_KEY, theme);
+    if (replay) document.getElementById('app').innerHTML = '';
     render();
   },
   logout() {
@@ -979,9 +1063,10 @@ const actions = {
   play: d => socket.emit('game:play', d.card),
   standings: () => setModal({ type: 'standings' }),
   history: () => showHistory(),
-  historyToggle: d => toggleHistorySession(Number(d.id)),
-  historySession: d => showSession(Number(d.id)),
-  historyBack: d => showHistory(Number(d.id)),
+  historyTab(d) {
+    modal.tab = d.tab;
+    renderModal();
+  },
   stats: showStats,
   closeModal: () => setModal(null),
   lastTrick() {
@@ -990,25 +1075,25 @@ const actions = {
     render();
   },
   replay: d => openReplay(Number(d.id), d.from),
-  rpBack() {
-    const from = modal.from ?? '';
-    if (from.startsWith('history:')) showHistory(Number(from.slice(8)));
-    else setModal({ type: 'standings' });
-  },
+  rpStop: stopReplay,
   rpToggle() {
-    if (modal.playing) replayPause();
+    if (replay.playing) replayPause();
     else replayPlay();
-    renderModal();
+    render();
   },
   rpStep(d) {
     replayPause();
-    const to = { first: 0, prev: modal.step - 1, next: modal.step + 1, last: replayLastStep(modal.data) }[d.to];
+    const to = { first: 0, prev: replay.step - 1, next: replay.step + 1, last: replayLastStep(replay.data) }[d.to];
     replayGoto(to);
   },
   rpSpeed(d) {
-    modal.speed = Number(d.speed);
-    if (modal.playing) replayPlay();
-    renderModal();
+    replay.speed = Number(d.speed);
+    if (replay.playing) replayPlay();
+    render();
+  },
+  rpRound(d) {
+    const id = d.dir === 'prev' ? replay.data.prevId : replay.data.nextId;
+    if (id) openReplay(id, replay.from, { speed: replay.speed, hidden: replay.hidden, autoplay: true });
   },
 };
 
@@ -1024,12 +1109,40 @@ document.addEventListener('input', e => {
   replayGoto(Number(e.target.value));
 });
 
+// Grafens tooltip: runde, melding og hver spillers samlede score, med en lodret hjælpelinje.
+document.addEventListener('mouseover', e => {
+  const hit = e.target.closest?.('[data-chart-round]');
+  const chart = e.target.closest?.('.hist-chart');
+  if (!chart) return;
+  const tip = chart.querySelector('.chart-tip'), cross = chart.querySelector('.crosshair');
+  if (!hit) {
+    tip.hidden = true;
+    cross.setAttribute('visibility', 'hidden');
+    return;
+  }
+  const data = JSON.parse(chart.dataset.chart), i = Number(hit.dataset.chartRound), r = data.rounds[i];
+  const cx = Number(hit.getAttribute('x')) + Number(hit.getAttribute('width')) / 2;
+  cross.setAttribute('x1', cx);
+  cross.setAttribute('x2', cx);
+  cross.setAttribute('visibility', 'visible');
+  const rows = data.players.map((name, pi) => ({ name, pi, v: data.totals[pi][i + 1] })).sort((a, b) => b.v - a.v);
+  tip.innerHTML = `<b>Runde ${r.no}</b> · ${esc(r.label)} ${r.won ? '✔' : '✘'}<br>
+    <span class="muted">Melder ${esc(r.declarer)}${r.partner && r.partner !== '–' ? `, makker ${esc(r.partner)}` : ''}</span>
+    ${rows.map(x => `<div><i style="background:var(--series-${x.pi + 1})"></i>${esc(x.name)} <b>${fmtPts(x.v)}</b></div>`).join('')}`;
+  const svg = chart.querySelector('svg').getBoundingClientRect(), box = chart.getBoundingClientRect();
+  const px = svg.left - box.left + (cx / 1000) * svg.width;
+  tip.style.left = `${px + 14 + 220 > box.width ? px - 234 : px + 14}px`;
+  tip.style.top = '40px';
+  tip.hidden = false;
+});
+
 document.addEventListener('change', e => {
+  if (e.target.matches?.('[data-history-select]')) return showHistory(Number(e.target.value), modal?.tab ?? 'table');
   const hide = e.target.dataset?.rpHide;
   if (hide != null) {
-    if (e.target.checked) modal.hidden.delete(Number(hide));
-    else modal.hidden.add(Number(hide));
-    return renderModal();
+    if (e.target.checked) replay.hidden.delete(Number(hide));
+    else replay.hidden.add(Number(hide));
+    return render();
   }
   const { rule, ruleOpt } = e.target.dataset ?? {};
   if (!rule && !ruleOpt) return;

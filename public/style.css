@@ -14,6 +14,10 @@
   --gold: #f2c94c;
   --chip: #ece6d8;
   --chip-muted: #e4ded2;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
 }
 
 /* Mørkt tema: vælges med knappen i topbjælken, ellers følges systemets indstilling.
@@ -28,6 +32,10 @@
   --danger: #e2735f;
   --chip: #35322b;
   --chip-muted: #2e2b25;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -41,6 +49,10 @@
     --danger: #e2735f;
     --chip: #35322b;
     --chip-muted: #2e2b25;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
     color-scheme: dark;
   }
 }
@@ -122,7 +134,6 @@ header.top .contract { font-size: 15px; }
 table.grid { border-collapse: collapse; margin: 8px 0; }
 table.grid th, table.grid td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; }
 table.grid td.num, table.grid th.num { text-align: right; font-variant-numeric: tabular-nums; }
-table.grid tr.lost td { color: var(--danger); }
 table.grid tfoot td { font-weight: 700; }
 
 .countdown { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, .55); color: #fff; font-size: 30vmin; font-weight: 800; z-index: 50; }
@@ -246,21 +257,6 @@ button.card:disabled { opacity: 1; filter: brightness(.7); }
 #toasts { position: fixed; bottom: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 70; }
 .toast { background: #222; color: #fff; padding: 10px 14px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, .3); max-width: 320px; }
 
-/* ---------- Afspiller ---------- */
-.modal .box.replay { max-width: 1000px; }
-.rp-info { text-align: center; }
-.rp-felt { width: min(100%, 62vh); height: auto; margin: 0 auto; }
-.rp-felt .seat { padding: 4px 6px; min-width: 0; }
-.rp-hand { display: flex; flex-wrap: wrap; justify-content: center; max-width: 320px; row-gap: 2px; }
-.rp-hand .card + .card { margin-left: -12px; }
-.rp-felt .seat.pos-left .rp-hand, .rp-felt .seat.pos-right .rp-hand { max-width: 140px; }
-.rp-caption { text-align: center; min-height: 1.4em; font-size: 17px; }
-.rp-controls { text-align: center; border-top: 1px solid var(--line); padding-top: 8px; }
-.rp-controls .row { display: flex; gap: 6px; justify-content: center; align-items: center; flex-wrap: wrap; margin: 6px 0; }
-.rp-controls input[type=range] { width: min(100%, 600px); }
-.rp-speeds { margin-left: 12px; display: inline-flex; gap: 4px; }
-.rp-controls label { margin: 0 6px; }
-
 /* ---------- Meldinger, hjørne, stikpanel og score ---------- */
 .felt-wrap { gap: 12px; }
 .bubble { position: absolute; background: #fff; color: #23201b; padding: 7px 15px; border-radius: 18px; font-weight: 700; font-size: 20px; box-shadow: 0 3px 8px rgba(0, 0, 0, .35); white-space: nowrap; animation: pop .25s ease-out; }
@@ -332,7 +328,6 @@ table.rounds tr:not(.lost) td.result { color: var(--accent); }
 
 /* ---------- Større spillede kort og den nye stikanimation ---------- */
 .center .played .card.classic { width: 90px; height: 126px; }
-.rp-felt .center .played .card.classic { width: 64px; height: 90px; }
 .played.lifting .card { animation: lift .3s ease-out forwards; }
 .played.lifted .card { transform: scale(1.1); box-shadow: 0 0 0 4px var(--gold), 0 14px 26px rgba(0, 0, 0, .55); }
 @keyframes lift {
@@ -385,3 +380,46 @@ table.rounds tr:not(.lost) td.result { color: var(--accent); }
 .stats-col table.grid { width: 100%; font-size: 14px; }
 .stats-col p { margin: 0 0 6px; font-size: 14px; }
 @media (max-width: 1200px) { .stats-grid { grid-template-columns: 1fr; } }
+
+/* ---------- Afspilning på bordet ---------- */
+.rp-player { position: absolute; display: flex; align-items: center; gap: 8px; }
+.rp-player .seat-wrap { position: static; transform: none; }
+.rp-player.pos-bottom { bottom: 8px; left: 50%; transform: translateX(-50%); flex-direction: column-reverse; }
+.rp-player.pos-top { top: 8px; left: 50%; transform: translateX(-50%); flex-direction: column; }
+.rp-player.pos-left { left: 10px; top: 50%; transform: translateY(-50%); flex-direction: column; }
+.rp-player.pos-right { right: 10px; top: 50%; transform: translateY(-50%); flex-direction: column; }
+.rp-hand { display: flex; }
+.rp-hand .card.classic { width: 78px; height: 110px; }
+.rp-hand .card:not(.classic) { width: 62px; height: 90px; }
+/* Top og bund: vandret med 50 % overlap som i spillet. Venstre og højre: lodret med 80 % overlap. */
+.rp-player.pos-top .rp-hand .card + .card, .rp-player.pos-bottom .rp-hand .card + .card { margin-left: -39px; }
+.rp-player.pos-left .rp-hand, .rp-player.pos-right .rp-hand { flex-direction: column; }
+.rp-player.pos-left .rp-hand .card + .card, .rp-player.pos-right .rp-hand .card + .card { margin-top: -88px; }
+.rp-controls { text-align: center; }
+.rp-controls .row { display: flex; gap: 6px; justify-content: center; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+.rp-controls input[type=range] { width: 100%; }
+.rp-caption { min-height: 2.8em; margin: 4px 0 8px; }
+.rp-show { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin-top: 8px; text-align: left; }
+
+/* ---------- Historik: faner og graf ---------- */
+.hist-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 4px 0 14px; border-bottom: 1px solid var(--line); }
+.tabs { display: flex; gap: 4px; }
+.tab { border: none; border-bottom: 3px solid transparent; border-radius: 0; background: none; padding: 8px 16px; font-weight: 600; color: var(--muted); }
+.tab.active { color: var(--ink); border-bottom-color: var(--accent); }
+.hist-bar select { font: inherit; padding: 6px 8px; margin-bottom: 6px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; max-width: 100%; }
+.hist-chart { position: relative; }
+.hist-chart svg { width: 100%; height: auto; display: block; }
+.hist-chart .gridline { stroke: var(--line); stroke-width: 1; }
+.hist-chart .zero { stroke: var(--muted); stroke-width: 1; }
+.hist-chart .axis { fill: var(--muted); font-size: 12px; }
+.hist-chart .series-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.hist-chart .mark-declarer { stroke: var(--panel); stroke-width: 2; }
+.hist-chart .mark-partner { fill: var(--panel); stroke-width: 2; }
+.hist-chart .end-label { fill: var(--ink); font-size: 13px; }
+.hist-chart .hit { fill: transparent; }
+.hist-chart .crosshair { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.chart-legend { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 6px; font-size: 14px; }
+.chart-legend i, .chart-tip i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.chart-legend .key { color: var(--muted); }
+.chart-tip { position: absolute; width: 220px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; box-shadow: 0 6px 18px rgba(0, 0, 0, .35); pointer-events: none; }
+.chart-tip div { margin-top: 3px; }
