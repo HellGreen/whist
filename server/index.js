@@ -384,8 +384,10 @@ function addBot(profile) {
   if (!AI.PROFILES[profile]) throw new UserError('Ukendt AI-profil');
   const label = AI.PROFILES[profile].label;
   const taken = new Set(table.seats.filter(Boolean).map(nameOf));
-  let name = `AI ${label}`;
-  for (let i = 2; taken.has(name); i++) name = `AI ${label} ${i}`;
+  // "AI Normal 1", "AI Normal 2" … – laveste nummer, der ikke allerede sidder ved bordet.
+  let i = 1;
+  while (taken.has(`AI ${label} ${i}`)) i++;
+  const name = `AI ${label} ${i}`;
   const { id } = db.upsertBot(name, profile);
   bots.set(id, profile);
   return id;

@@ -398,12 +398,16 @@ table.rounds tr:not(.lost) td.result { color: var(--accent); }
 .rp-player.pos-left { left: 10px; top: 50%; transform: translateY(-50%); flex-direction: column; }
 .rp-player.pos-right { right: 10px; top: 50%; transform: translateY(-50%); flex-direction: column; }
 .rp-hand { display: flex; }
-.rp-hand .card.classic { width: 78px; height: 110px; }
-.rp-hand .card:not(.classic) { width: 62px; height: 90px; }
+/* Genafspilningen viser alle fire hænder, så kortene er 10 % mindre end ved bordet (ellers dækker de for hinanden). */
+#rp-table .card { width: 56px; height: 81px; }
+#rp-table .card.classic { height: 79px; }
+#rp-table .card.small { width: 32px; height: 45px; }
+#rp-table .rp-hand .card.classic { width: 70px; height: 99px; }
+#rp-table .center .played .card.classic { width: 81px; height: 113px; }
 /* Top og bund: vandret med 50 % overlap som i spillet. Venstre og højre: lodret med 80 % overlap. */
-.rp-player.pos-top .rp-hand .card + .card, .rp-player.pos-bottom .rp-hand .card + .card { margin-left: -39px; }
+.rp-player.pos-top .rp-hand .card + .card, .rp-player.pos-bottom .rp-hand .card + .card { margin-left: -35px; }
 .rp-player.pos-left .rp-hand, .rp-player.pos-right .rp-hand { flex-direction: column; }
-.rp-player.pos-left .rp-hand .card + .card, .rp-player.pos-right .rp-hand .card + .card { margin-top: -88px; }
+.rp-player.pos-left .rp-hand .card + .card, .rp-player.pos-right .rp-hand .card + .card { margin-top: -79px; }
 .rp-controls { text-align: center; }
 .rp-controls .row { display: flex; gap: 6px; justify-content: center; align-items: center; flex-wrap: wrap; margin: 8px 0; }
 /* Styring og hastighed på én linje. */
