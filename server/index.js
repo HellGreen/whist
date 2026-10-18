@@ -211,7 +211,9 @@ function gameAction(id, fn) {
   db.storeState(table.sessionId, snapshot()); // så spillet kan genoptages præcis her
 
   if (g.phase === 'passed') {
-    toastTable('Alle meldte pas – der gives kort igen');
+    toastTable(g.ironHand != null
+      ? `${nameOf(table.seats[g.ironHand])} har jernhånd – der gives kort igen`
+      : 'Alle meldte pas – der gives kort igen');
     startRound((g.dealer + 1) % 4);
   } else if (g.phase === 'roundEnd' && !g.recorded) {
     g.recorded = true;

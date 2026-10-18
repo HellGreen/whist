@@ -32,7 +32,7 @@ const isRed = card => card[0] === 'H' || card[0] === 'D';
 const cardText = card => (card[0] === 'J' ? 'Joker' : `${SUIT_SYM[card[0]]}${RANK_SYM[+card.slice(1)] ?? card.slice(1)}`);
 const trumpText = t => (t == null ? '–' : t === 'NT' ? 'uden trumf' : `${SUIT_SYM[t]} ${SUIT_NAME[t]}`);
 const bidKey = b => b.nolo ?? `${b.n}:${b.suffix ?? ''}`;
-const bidText = e => (e.pass ? 'pas' : e.join ? 'går med' : (e.hold ? 'holder ' : '') + esc(e.label));
+const bidText = e => (e.pass ? 'pas' : e.iron ? 'jernhånd' : e.join ? 'går med' : (e.hold ? 'holder ' : '') + esc(e.label));
 
 const FRACTIONS = { 0.125: '⅛', 0.25: '¼', 0.375: '⅜', 0.5: '½', 0.625: '⅝', 0.75: '¾', 0.875: '⅞' };
 function fmtPts(n) {
@@ -233,6 +233,9 @@ function rulesBox(t, editable) {
     <label class="opt"><input type="checkbox" data-rule-opt="hold" ${t.rules.hold !== false ? 'checked' : ''} ${editable ? '' : 'disabled'}>
       <span><b>Hold</b> – en spiller tidligere i melderækkefølgen (forhånd først) må melde det samme som en senere spiller
       i stedet for at gå højere. Den senere spiller skal så gå højere eller passe.</span></label>
+    <label class="opt"><input type="checkbox" data-rule-opt="jernhaand" ${t.rules.jernhaand !== false ? 'checked' : ''} ${editable ? '' : 'disabled'}>
+      <span><b>Jernhånd</b> – en spiller uden billedkort, esser og jokere kan, når det er vedkommendes tur til at melde,
+      kræve at der gives kort igen.</span></label>
     <h4>Rangorden</h4>
     <ul>
       <li>Et antal stik med påhæng slår samme antal uden: 8 halve slår 8, men 9 slår 8 med påhæng.</li>
@@ -601,6 +604,10 @@ function bidGrid(t, g) {
   const info = state.rulesInfo;
   const suffixes = info.suffixes.filter(s => t.rules.bids[s.key]);
   const btn = (b, fallback) => {
+    // På en nolo-melding går man med ved at trykke på samme melding.
+    if (b.nolo && b.nolo === g.joinNolo) {
+      return `<button class="primary" data-action="joinBid" title="Spil samme nolo-melding – hver for sig">${esc(fallback)} (går med)</button>`;
+    }
     const a = allowed.get(bidKey(b));
     return `<button data-action="bid" data-bid='${esc(JSON.stringify(b))}' ${a ? '' : 'disabled'}>${a?.hold ? 'Hold ' : ''}${esc(a?.label ?? fallback)}</button>`;
   };
@@ -610,11 +617,10 @@ function bidGrid(t, g) {
   }
   const nolos = info.nolos.filter(x => t.rules.bids[x.key]);
   if (nolos.length) rows.push(`<div class="bidrow">${nolos.map(x => btn({ nolo: x.key }, x.label)).join('')}</div>`);
-  const high = [...g.bidLog].reverse().find(e => !e.pass && !e.join);
-  const join = g.canJoin ? `<button class="primary" data-action="joinBid" title="Spil samme nolo-melding – hver for sig">Gå med (${esc(high?.label ?? '')})</button>` : '';
+  const iron = g.canIronHand ? `<button data-action="ironHand" title="Ingen billedkort, esser eller jokere – der gives kort igen">Jernhånd</button>` : '';
   return `<p><b>Din tur til at melde.</b></p>
     <div class="bidgrid">${rows.join('')}</div>
-    <div class="row">${join}<button class="danger" data-action="pass">Pas</button></div>`;
+    <div class="row">${iron}<button class="danger" data-action="pass">Pas</button></div>`;
 }
 
 function suitButtons(action, selected, isDisabled = () => false) {
@@ -1147,6 +1153,7 @@ const actions = {
   end: () => confirm('Afslut spillet for alle? Stillingen gemmes i historikken.') && socket.emit('table:end'),
   bid: d => socket.emit('game:bid', JSON.parse(d.bid)),
   joinBid: () => socket.emit('game:bid', { join: true }),
+  ironHand: () => socket.emit('game:bid', { iron: true }),
   pass: () => socket.emit('game:bid', null),
   pickTrump(d) {
     ui.trump = d.suit;

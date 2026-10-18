@@ -388,3 +388,37 @@ test('AI: sikre stik tæller jokere, topkort i trumf, lange trumf og esser i sid
   // Trumf spar E-K-D + 3 små = 6 trumf: 3 topkort + 1 for længden over 5. Hjerter E: 1. Klør K: 0. Joker: 1.
   assert.equal(sureTricks(['S14', 'S13', 'S12', 'S5', 'S4', 'S3', 'H14', 'H2', 'C13', 'J1'], 'S'), 6);
 });
+
+// Plads 0 får 2–10 i spar og hjerter (13 kort uden billedkort, esser og jokere); resten af bunken til de andre.
+function ironRound(rules) {
+  const deck = G.makeDeck();
+  const iron = deck.filter(c => 'SH'.includes(c[0]) && G.rankOf(c) <= 10).slice(0, 13);
+  return G.newRound(3, rules, [...iron, ...deck.filter(c => !iron.includes(c))]);
+}
+
+test('jernhånd: spilleren kan kræve at der gives om', () => {
+  const s = ironRound(rules);
+  assert.ok(G.isIronHand(s.hands[0]));
+  assert.ok(G.view(s, 0).canIronHand);
+  assert.ok(!G.view(s, 1).canIronHand); // ikke plads 1's tur, og den har billedkort
+  G.bid(s, 0, { iron: true });
+  assert.equal(s.phase, 'passed');
+  assert.equal(s.ironHand, 0);
+  assert.equal(G.view(s, 1).bidLog[0].iron, true);
+});
+
+test('jernhånd: kan ikke kræves uden jernhånd eller når reglen er slået fra', () => {
+  const s = fixedRound(3);
+  assert.throws(() => G.bid(s, 0, { iron: true }), /jernhånd/);
+  const off = ironRound({ ...rules, jernhaand: false });
+  assert.ok(!G.canIronHand(off, 0));
+  assert.throws(() => G.bid(off, 0, { iron: true }), /jernhånd/);
+});
+
+test('gå med: visningen fortæller hvilken nolo man kan gå med på', () => {
+  const s = fixedRound(3);
+  assert.equal(G.view(s, 1).joinNolo, null);
+  G.bid(s, 0, { nolo: 'sol' });
+  assert.equal(G.view(s, 1).joinNolo, 'sol');
+  assert.equal(G.view(s, 2).joinNolo, null); // ikke plads 2's tur
+});

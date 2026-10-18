@@ -2,7 +2,7 @@
 // (meldinger, spillede kort, kendt makker), og træffer valg ud fra simple tommelfingerregler.
 import { bidRank } from './bids.js';
 import {
-  ACES, SUITS, allowedBids, canJoin, isJoker, ledSuitOf, legalCards, rankOf, soloistsOf, suitOf, trickWinnerOf, trumpSuit,
+  ACES, SUITS, allowedBids, canIronHand, canJoin, isJoker, ledSuitOf, legalCards, rankOf, soloistsOf, suitOf, trickWinnerOf, trumpSuit,
 } from './game.js';
 
 export const PROFILES = {
@@ -115,7 +115,8 @@ function chooseBid(s, seat, p) {
     if (danger <= p.noloSlack - NOLO_EXTRA[key]) wanted.push({ nolo: key });
   }
   const options = wanted.filter(b => allowed.has(bidKey(b))).sort((a, b) => bidRank(a) - bidRank(b));
-  return options[0] ?? null; // billigste melding der stadig slår den gældende
+  // Billigste melding der stadig slår den gældende. Uden en melding: kræv nyt spil ved jernhånd.
+  return options[0] ?? (canIronHand(s, seat) ? { iron: true } : null);
 }
 
 // Kulørens vægt: summen af egne kort i kuløren (2–10 som tallet, B=11, D=12, K=13, E=14).

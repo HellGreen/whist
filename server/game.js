@@ -87,6 +87,13 @@ export function canJoin(s, seat) {
     && s.high.seat !== seat && !(s.high.joined ?? []).includes(seat);
 }
 
+// Jernhånd: ingen billedkort (B, D, K), esser eller jokere. Spilleren kan kræve, at der gives om.
+export const isIronHand = hand => hand.every(c => !isJoker(c) && rankOf(c) <= 10);
+
+export function canIronHand(s, seat) {
+  return s.phase === 'bidding' && s.turn === seat && s.rules.jernhaand !== false && isIronHand(s.hands[seat]);
+}
+
 export function allowedBids(s, seat) {
   return allBids(s.rules)
     .filter(b => canBid(s, seat, b))
@@ -98,6 +105,13 @@ export function bid(s, seat, raw) {
   if (raw == null) {
     s.passed[seat] = true;
     s.bidLog.push({ seat, pass: true });
+  } else if (raw.iron) {
+    if (!canIronHand(s, seat)) throw new UserError('Du har ikke jernhånd');
+    s.bidLog.push({ seat, iron: true });
+    s.ironHand = seat;
+    s.phase = 'passed';
+    s.turn = null;
+    return;
   } else if (raw.join) {
     if (!canJoin(s, seat)) throw new UserError('Du kan ikke gå med nu');
     (s.high.joined ??= []).push(seat);
@@ -383,11 +397,12 @@ export function view(s, seat) {
     hand: sortCards(s.hands[seat], !!c?.bid.nolo),
     handCounts: s.hands.map(h => h.length),
     legal: legalCards(s, seat),
-    bidLog: s.bidLog.map(e => (e.pass
-      ? { seat: e.seat, pass: true }
+    bidLog: s.bidLog.map(e => (e.pass || e.iron
+      ? { seat: e.seat, pass: e.pass, iron: e.iron }
       : { seat: e.seat, hold: e.hold, join: e.join, label: bidLabel(e.bid) })),
     allowedBids: s.phase === 'bidding' && s.turn === seat ? allowedBids(s, seat) : [],
-    canJoin: canJoin(s, seat),
+    joinNolo: canJoin(s, seat) ? s.high.bid.nolo : null, // den nolo-melding man kan gå med på
+    canIronHand: canIronHand(s, seat),
     contract: c && {
       declarer: c.declarer, bid: c.bid, label: c.label, trump: c.trump, ace: c.ace,
       alone: !!c.bid.nolo || c.bid.suffix === 'kvarte',

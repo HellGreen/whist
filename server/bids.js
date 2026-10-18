@@ -33,8 +33,11 @@ export const noloDef = key => NOLOS.find(x => x.key === key);
 const suffixIndex = key => SUFFIXES.findIndex(x => x.key === key);
 
 // hold: en spiller tidligere i melderækkefølgen må melde det samme som en senere spiller.
+// jernhaand: en spiller uden billedkort, esser og jokere kan kræve, at der gives om.
+const OPTIONS = { hold: true, jernhaand: true };
+
 export function defaultRules() {
-  return { bids: Object.fromEntries([...SUFFIXES, ...NOLOS].map(o => [o.key, o.default])), hold: true };
+  return { bids: Object.fromEntries([...SUFFIXES, ...NOLOS].map(o => [o.key, o.default])), ...OPTIONS };
 }
 
 export function sanitizeRules(raw) {
@@ -42,7 +45,9 @@ export function sanitizeRules(raw) {
   for (const key of Object.keys(rules.bids)) {
     if (typeof raw?.bids?.[key] === 'boolean') rules.bids[key] = raw.bids[key];
   }
-  if (typeof raw?.hold === 'boolean') rules.hold = raw.hold;
+  for (const key of Object.keys(OPTIONS)) {
+    if (typeof raw?.[key] === 'boolean') rules[key] = raw[key];
+  }
   return rules;
 }
 

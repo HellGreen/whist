@@ -242,14 +242,17 @@ valgt følgende, som er bekræftet (alt kan justeres i `server/bids.js`, `server
   (kvarte har altså ikke den særlige "7 kvarte slår 9"-regel).
 - **Nolo:** sol (9–9+), ren sol (10–10+), bordlægger (11–11+) og ren bordlægger (12–12+). Alle er med som standard.
 - **Holde:** en spiller tidligere i melderunden må melde det samme som en senere spiller (ikke ved nolo).
-- **Gå med:** på en nolo-melding kan de andre gå med i stedet for at melde højere. De spiller samme melding hver
-  for sig, og resten prøver at vælte dem alle. Melderen bytter først med katten; derefter kan den næste der gik
+- **Gå med:** på en nolo-melding kan de andre gå med i stedet for at melde højere – knappen med samme melding
+  hedder så fx "Sol (går med)". De spiller samme melding hver for sig, og resten prøver at vælte dem alle. Melderen bytter først med katten; derefter kan den næste der gik
   med bytte med de 3 kort, melderen lagde, osv. Runden fortsætter, til alle nolo-spillere er gået ned eller 13
   stik er spillet. Point med to nolo-spillere (grundpoint P): går én hjem og én ned, dækker taberen alene
   vinderens fulde beløb (3P). Går begge ned, betaler hver P til en modspiller. Går begge hjem, betaler hver
   modspiller P til en vinder. Reglen er slået til som
   standard og kan slås fra af bordets ejer.
 - **Alle passer:** der gives om, og giveren rykker en plads.
+- **Jernhånd:** en spiller uden billedkort (B, D, K), esser og jokere kan, når det er vedkommendes tur til at melde,
+  kræve at der gives om (giveren rykker en plads, som når alle passer). Slået til som standard; bordets ejer kan
+  slå den fra. AI-spillere kræver det kun, hvis de ellers ville passe.
 - **Jokere:** en joker spillet ud som første kort er et sikkert stik, og de andre må lægge hvad som helst. Spilles
   den ikke ud, har den ingen værdi og må kun lægges, når man ikke kan bekende kulør. Jokere kan ikke spilles ud i
   første stik.
@@ -258,5 +261,4 @@ valgt følgende, som er bekræftet (alt kan justeres i `server/bids.js`, `server
 - **Point:** vundet = grundpoint × (1 + overstik), tabt = grundpoint × manglende stik. Påhæng ×2. Vip'1/2/3 ×2/×4/×8
   (klør vendt ×2). Selvmakker (kaldt eget es) ×2. Esset i katten giver ingen fordobling. Med makker får eller betaler
   begge makkere pointene. Spiller man alene, betaler hver modspiller, og melderen får 3×.
-- Endnu ikke understøttet: "gå med" på vip og sol, fordækt kort, kald af konge ved fire esser og jernhånd
-  (se `todo.md`).
+- Endnu ikke understøttet: fordækt kort og kald af konge ved fire esser (se `todo.md`).
