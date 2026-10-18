@@ -501,15 +501,34 @@ function resultBox(t, g) {
 // Et stik får en tom linje, når første kort spilles; prikken kommer, når stikket er lagt i vinderens bunke.
 function trickPanel(t, g, anim) {
   if (g.phase !== 'play' && g.phase !== 'roundEnd') return '';
-  const short = name => esc(name.length > 8 ? name.slice(0, 7) + '…' : name);
   const winners = [...t.trickWinners];
   if (anim && anim.phase !== 'done') winners[winners.length - 1] = null;
   if (g.trick.length) winners.push(null);
-  const rows = winners.map((w, i) => `<tr><td>${i + 1}</td>${t.seats.map((_, s) => `<td>${s === w ? '●' : ''}</td>`).join('')}</tr>`).join('');
+  return trickTable(t.seats.map(p => p.name), winners, g.contract);
+}
+
+// Stiktabel med en farvet firkant ud for den, der vandt stikket – samme farver som meldingspanelet:
+// grøn = melder/makker, rød = modspiller. Indtil makker kendes, er andres stik grå (ellers afsløres makker).
+// Nolo: melderens tilladte stik grønt, resten rødt; modspillernes stik grå. `winners` har null for uafgjorte stik.
+function trickTable(names, winners, c) {
+  const short = name => esc(name.length > 8 ? name.slice(0, 7) + '…' : name);
+  const nolo = c.nolo ?? !!c.bid?.nolo;
+  const allowed = state.rulesInfo.nolos.find(x => x.key === c.bid?.nolo || x.label === c.label)?.maxTricks ?? 0;
+  let declarerTricks = 0;
+  const box = w => {
+    if (w === c.declarer) declarerTricks++;
+    let cls;
+    if (nolo) cls = w !== c.declarer ? '' : declarerTricks <= allowed ? 'won' : 'lost';
+    else if (w === c.declarer) cls = 'won';
+    else if (c.partner != null && c.partner !== c.declarer) cls = w === c.partner ? 'won' : 'lost';
+    else cls = c.alone || c.partner === c.declarer ? 'lost' : '';
+    return `<span class="stik-box ${cls}"></span>`;
+  };
+  const rows = winners.map((w, i) => `<tr><td>${i + 1}</td>${names.map((_, s) => `<td>${s === w ? box(w) : ''}</td>`).join('')}</tr>`).join('');
   return `<div class="trick-panel">
     <h4>Stik</h4>
     <table>
-      <thead><tr><th>#</th>${t.seats.map(p => `<th title="${esc(p.name)}">${short(p.name)}</th>`).join('')}</tr></thead>
+      <thead><tr><th>#</th>${names.map(n => `<th title="${esc(n)}">${short(n)}</th>`).join('')}</tr></thead>
       <tbody>${rows}</tbody>
     </table>
   </div>`;
@@ -933,12 +952,12 @@ function replayTable(m) {
 // Stikpanelet under afspilning: alle rundens stik vises fra start (så panelerne under ikke flytter sig),
 // og prikken kommer, når stikket er afgjort.
 function replayTrickPanel(m, rs) {
-  const short = name => esc(name.length > 8 ? name.slice(0, 7) + '…' : name);
-  const winners = m.data.trickWinners.map((w, i) => (i < rs.done ? w : null));
-  return `<div class="trick-panel"><h4>Stik</h4><table>
-    <thead><tr><th>#</th>${m.data.players.map(p => `<th title="${esc(p.name)}">${short(p.name)}</th>`).join('')}</tr></thead>
-    <tbody>${winners.map((w, i) => `<tr><td>${i + 1}</td>${m.data.players.map((_, s) => `<td>${s === w ? '●' : ''}</td>`).join('')}</tr>`).join('')}</tbody>
-  </table></div>`;
+  const { data, step } = m, c = data.contract;
+  const acePlayed = data.plays.slice(0, rs.count).some(p => p.card === c.ace);
+  const winners = data.trickWinners.map((w, i) => (i < rs.done ? w : null));
+  return trickTable(data.players.map(p => p.name), winners, {
+    ...c, alone: c.nolo || !c.ace, partner: acePlayed || step === replayLastStep(data) ? c.partner : null,
+  });
 }
 
 // Skelettet bygges én gang; derefter opdateres kun bord, paneler og knappernes tilstand,

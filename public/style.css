@@ -429,3 +429,6 @@ table.rounds tr:not(.lost) td.result { color: var(--accent); }
 .chart-legend .key { color: var(--muted); }
 .chart-tip { position: absolute; width: 220px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; box-shadow: 0 6px 18px rgba(0, 0, 0, .35); pointer-events: none; }
 .chart-tip div { margin-top: 3px; }
+
+/* Firkanterne i stiktabellen (samme som meldingspanelets felter). */
+.trick-panel td .stik-box { display: inline-block; width: 13px; height: 13px; vertical-align: middle; }
