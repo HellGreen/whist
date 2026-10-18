@@ -88,11 +88,19 @@ Alle kommandoer køres i en terminal på serveren.
    sudo mkdir -p /etc/whist
    sudo ssh-keygen -t ed25519 -N '' -C "whist@$(hostname)" -f /etc/whist/github_key
    sudo chown -R whist: /etc/whist
+   ```
+
+   `ssh-keygen` skriver en del linjer (fingerprint og "randomart") – dem skal du ikke bruge. Vis i stedet den
+   offentlige nøgle:
+
+   ```sh
    sudo cat /etc/whist/github_key.pub
    ```
 
-   Kopiér linjen, der bliver vist, ind på GitHub under repoet → *Settings* → *Deploy keys* → *Add deploy key*
-   (lad "Allow write access" være slået fra). Hver server har sin egen nøgle.
+   Den skriver præcis én linje, fx `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA...Qw whist@testserver`. Kopiér hele
+   linjen – også `ssh-ed25519` forrest og `whist@...` bagerst (det er bare en kommentar, der viser hvilken server
+   nøglen hører til). På GitHub: repoet → *Settings* → *Deploy keys* → *Add deploy key*. *Title*: fx
+   `test-server`. *Key*: linjen. Lad "Allow write access" være slået fra. Hver server har sin egen nøgle.
 
 3. Hent koden til `/opt/whist`:
 
