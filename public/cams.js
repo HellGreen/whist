@@ -27,21 +27,22 @@ export function initCams(sock, toastFn) {
   socket.on('disconnect', () => { for (const id of [...peers.keys()]) closePeer(id); });
 }
 
-// Kaldes ved hver ny tilstand fra serveren.
+// Kaldes ved hver ny tilstand fra serveren. Kameraerne er med, så snart man sidder ved et bord
+// (også mens man venter på, at spillet starter).
 export function updateCams(state) {
   const t = state?.table;
-  const atTable = !!(state?.me && t?.game && t.mySeat >= 0);
+  const atTable = !!(state?.me && t && t.mySeat >= 0);
   document.body.classList.toggle('with-cams', atTable);
   if (!atTable) {
     if (me || local) leaveTable();
     return;
   }
   me = state.me.id;
-  const seats = POS_ORDER.map(i => t.seats[(t.mySeat + i) % 4]);
-  const humans = seats.filter(p => p && !p.bot && p.id !== me);
-  // Forbindelser til de andre menneskelige spillere, der er online.
-  for (const p of humans) if (p.online && !peers.has(p.id)) openPeer(p.id);
-  for (const id of [...peers.keys()]) if (!humans.some(p => p.id === id && p.online)) closePeer(id);
+  // Kun mennesker har kamera – AI-spillere og tomme pladser får ingen kasse.
+  const seats = POS_ORDER.map(i => t.seats[(t.mySeat + i) % 4]).filter(p => p && !p.bot);
+  const others = seats.filter(p => p.id !== me && p.online && p.present !== false);
+  for (const p of others) if (!peers.has(p.id)) openPeer(p.id);
+  for (const id of [...peers.keys()]) if (!others.some(p => p.id === id)) closePeer(id);
   renderTiles(seats);
 }
 
@@ -56,7 +57,6 @@ function renderTiles(seats = lastSeats) {
   const ids = seats.map(p => p?.id);
   for (const [id, tile] of tiles) if (!ids.includes(id)) { tile.el.remove(); tiles.delete(id); }
   seats.forEach((p, i) => {
-    if (!p) return;
     let tile = tiles.get(p.id);
     if (!tile) {
       tiles.set(p.id, tile = makeTile(p.id === me));
@@ -64,11 +64,12 @@ function renderTiles(seats = lastSeats) {
     }
     if (column.children[i] !== tile.el) column.insertBefore(tile.el, column.children[i] ?? null);
     const status = statusOf(p.id);
-    tile.label.textContent = (p.bot ? '🤖 ' : '') + p.name;
+    tile.label.textContent = p.name;
     tile.el.classList.toggle('has-video', !!status?.video);
     tile.el.classList.toggle('muted', !!status && !status.audio);
-    tile.el.classList.toggle('offline', !p.bot && !p.online);
-    tile.info.textContent = p.bot ? 'AI-spiller' : !p.online ? 'offline' : status?.video ? '' : 'kamera slukket';
+    const away = !p.online || p.present === false;
+    tile.el.classList.toggle('offline', away);
+    tile.info.textContent = away ? 'ikke ved bordet' : status?.video ? '' : 'kamera slukket';
     if (p.id === me) {
       setHtml(tile.controls, local
         ? `<button data-cam="mic" title="${micOn ? 'Slå mikrofonen fra' : 'Slå mikrofonen til'}">${micOn ? '🎤' : '🔇'}</button>`
@@ -102,6 +103,11 @@ function onClick(e) {
 // ---------- Eget kamera og mikrofon ----------
 
 async function startLocal() {
+  if (!navigator.mediaDevices) {
+    // Kamera og mikrofon kræver en sikker side: https:// eller http://localhost.
+    toast('Kamera og mikrofon virker kun på https:// eller http://localhost – se README under "Webcam og lyd"');
+    return;
+  }
   const video = { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15 } };
   try {
     local = await navigator.mediaDevices.getUserMedia({ video, audio: true });

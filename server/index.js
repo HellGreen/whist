@@ -1,6 +1,9 @@
 // Webserver: venterum, ét bord, nedtælling, spil, AI-spillere, pause/gem og historik.
 import { randomInt } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { createServer as createHttpsServer } from 'node:https';
+import { networkInterfaces } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
@@ -32,7 +35,13 @@ db.recoverSessions();
 
 const app = express();
 app.use(express.static(path.join(ROOT, 'public')));
-const server = createServer(app);
+// HTTPS (valgfrit): browsere giver kun adgang til kamera og mikrofon på https:// eller http://localhost.
+// Til afprøvning fra andre pc'er på netværket: sæt WHIST_TLS_CERT og WHIST_TLS_KEY, eller læg et
+// (selvsigneret) certifikat i data/tls-cert.pem og data/tls-key.pem. På serveren klarer Caddy HTTPS.
+const TLS_CERT = process.env.WHIST_TLS_CERT || path.join(ROOT, 'data', 'tls-cert.pem');
+const TLS_KEY = process.env.WHIST_TLS_KEY || path.join(ROOT, 'data', 'tls-key.pem');
+const tls = existsSync(TLS_CERT) && existsSync(TLS_KEY);
+const server = tls ? createHttpsServer({ cert: readFileSync(TLS_CERT), key: readFileSync(TLS_KEY) }, app) : createServer(app);
 const io = new Server(server);
 
 /** Kendte menneskelige spillere: id -> { id, name, sockets: Set, leaveTimer } */
@@ -605,4 +614,9 @@ io.on('connection', socket => {
   socket.emit('state', viewFor(null));
 });
 
-server.listen(PORT, () => console.log(`Whist kører på http://localhost:${PORT}`));
+server.listen(PORT, () => {
+  const scheme = tls ? 'https' : 'http';
+  const lan = Object.values(networkInterfaces()).flat().filter(a => a?.family === 'IPv4' && !a.internal).map(a => a.address);
+  console.log(`Whist kører på ${scheme}://localhost:${PORT}`);
+  for (const ip of lan) console.log(`  på netværket: ${scheme}://${ip}:${PORT}`);
+});

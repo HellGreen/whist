@@ -52,20 +52,35 @@ Miljøvariabler:
 
 ## Webcam og lyd
 
-Under et spil står der en kolonne til venstre for bordet med et billede pr. spiller. Hver spiller trykker selv
-**Tænd kamera** (browseren spørger om adgang til kamera og mikrofon); 🎤 slår ens egen mikrofon fra og til, og ⏹
-slukker igen. Har man intet kamera, sendes kun lyd. Brug gerne headset, så der ikke kommer ekko.
+Så snart man sidder ved et bord – også mens man venter på, at spillet starter – står der en kolonne til venstre
+med et billede pr. menneskelig spiller (AI-spillere har intet kamera). Hver spiller trykker selv **Tænd kamera**
+(browseren spørger om adgang til kamera og mikrofon); 🎤 slår ens egen mikrofon fra og til, og ⏹ slukker igen.
+Har man intet kamera, sendes kun lyd. Har man hverken kamera eller mikrofon, kan man stadig se og høre de andre.
 
 Video og lyd går direkte mellem browserne (WebRTC). Serveren formidler kun opsætningen (`rtc:signal`), og
 browserne finder hinanden gennem routerne med Googles offentlige STUN-server. Der er ingen TURN-server, så sidder
 en spiller bag en meget striks router eller et mobilnet, kan forbindelsen til vedkommende udeblive.
 
-Browsere giver kun adgang til kamera og mikrofon på `https://` eller `http://localhost`. På udviklingsmaskinen
-virker det altså på `http://localhost:3000`; på en server kræver det HTTPS (se Caddy nedenfor).
+### HTTPS
 
-Afprøvning med flere spillere på samme pc: navnet gemmes i browseren, så brug én browser (eller ét InPrivate-/
-inkognitovindue, eller én Chrome-profil) pr. spiller – fx Chrome, Edge og Firefox – og fyld resten op med AI.
-Windows lader normalt flere browsere bruge kameraet samtidig.
+Browsere giver kun adgang til kamera og mikrofon på `https://` eller `http://localhost`. På en server klarer Caddy
+HTTPS (se nedenfor). Skal andre pc'er på netværket bruge kamera mod udviklingsmaskinen, så lav et selvsigneret
+certifikat i `data/` (i Git Bash; ret IP-adressen til maskinens egen):
+
+```sh
+MSYS_NO_PATHCONV=1 openssl req -x509 -newkey rsa:2048 -nodes -days 825   -keyout data/tls-key.pem -out data/tls-cert.pem -subj "/CN=whist-dev"   -addext "subjectAltName=DNS:localhost,IP:127.0.0.1,IP:192.168.13.128"
+```
+
+Ligger de to filer der (eller peger `WHIST_TLS_CERT` og `WHIST_TLS_KEY` på et certifikat), starter serveren med
+HTTPS og skriver adresserne på netværket ved opstart, fx `https://192.168.13.128:3000`. Første gang advarer browseren
+om certifikatet: vælg *Avanceret* → *Fortsæt til siden*. Slet filerne for at gå tilbage til `http://`.
+`tools/simulate.js` skal så også have `https://`-adressen.
+
+### Afprøvning med flere spillere
+
+Navnet gemmes i browseren, så brug én browser (eller ét InPrivate-/inkognitovindue, eller én Chrome-profil) pr.
+spiller – på samme pc eller på andre pc'er på netværket – og fyld resten op med AI. Brug headset, ellers hyler det,
+når flere sidder i samme rum.
 
 ## Drift på Linux-server
 

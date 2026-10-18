@@ -10,7 +10,7 @@ const NAMES = WITH_AI ? ['Sim Anna'] : ['Sim Anna', 'Sim Bo', 'Sim Carl', 'Sim D
 const pick = a => a[Math.floor(Math.random() * a.length)];
 
 const bots = NAMES.map(name => {
-  const socket = io(URL, { transports: ['websocket'] });
+  const socket = io(URL, { transports: ['websocket'], rejectUnauthorized: false }); // tillad selvsigneret dev-certifikat
   const bot = { name, socket, state: null };
   socket.on('state', s => { bot.state = s; act(bot); });
   socket.on('toast', m => console.log(`[${name}] toast: ${m}`));
