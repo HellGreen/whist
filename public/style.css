@@ -105,7 +105,9 @@ header.top button.link { color: #fff; }
 header.top .contract { font-size: 15px; }
 
 /* ---------- Venterum ---------- */
-.lobby { display: grid; grid-template-columns: 240px 1fr 220px; gap: 16px; padding: 0 16px 16px; max-width: 1400px; margin: 0 auto; align-items: start; }
+.lobby { display: grid; grid-template-columns: 240px 1fr 220px; gap: 16px; padding: 0 16px 16px; max-width: 1600px; margin: 0 auto; align-items: start; }
+.lobby-main { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; min-width: 0; }
+@media (max-width: 1200px) { .lobby-main { grid-template-columns: 1fr; } }
 @media (max-width: 900px) { .lobby { grid-template-columns: 1fr; } }
 .lobby .menu { display: flex; flex-direction: column; gap: 8px; }
 .lobby .menu .me { font-weight: 700; margin-bottom: 4px; }
@@ -131,7 +133,7 @@ header.top .contract { font-size: 15px; }
 .seats li.empty { color: var(--muted); border-style: dashed; }
 .saved li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
-.rules { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 8px; }
+.rules h2 { margin-bottom: 4px; }
 .rules h4 { margin: 14px 0 6px; }
 .rules label.opt { display: flex; gap: 8px; align-items: flex-start; padding: 4px 0; }
 .rules label.opt input { margin-top: 4px; }
@@ -150,8 +152,8 @@ table.grid tfoot td { font-weight: 700; }
 /* Mellemrummet skrumper fra 200 px til 24 px på smalle skærme, så bordet får pladsen. */
 .table-area { --gap: clamp(24px, calc(100vw - 1700px), 200px); display: flex; justify-content: center; gap: var(--gap); min-height: 0; background: #2b2118; }
 .felt-wrap { flex: none; display: flex; justify-content: center; align-items: center; min-height: 0; min-width: 0; padding: 10px; }
-.felt-wrap .felt { height: min(100%, calc(100vw - 460px - var(--gap))); }
-.side { width: 400px; flex: none; display: flex; flex-direction: column; gap: 10px; padding: 10px 10px 10px 0; overflow-y: auto; }
+.felt-wrap .felt { height: min(100%, calc(100vw - 420px - var(--gap))); }
+.side { width: 360px; flex: none; display: flex; flex-direction: column; gap: 10px; padding: 10px 10px 10px 0; overflow-y: auto; }
 /* Højre kolonne: giver øverst, handlinger og stik i midten, runde og knapper nederst. */
 .dealer-info { color: #f3efe6; font-size: 17px; padding: 4px 2px; }
 .round-box { margin-top: auto; background: var(--panel); border-radius: 8px; overflow: hidden; }
@@ -166,7 +168,7 @@ body.with-cams #cams {
 }
 /* Venterum og bord rykker til højre, så kolonnen ikke dækker for noget. */
 body.with-cams #app { padding-left: 275px; }
-body.with-cams .felt-wrap .felt { height: min(100%, calc(100vw - 735px - var(--gap))); }
+body.with-cams .felt-wrap .felt { height: min(100%, calc(100vw - 695px - var(--gap))); }
 .cam-tile { position: relative; flex: none; width: 255px; height: 191px; border-radius: 8px; overflow: hidden;
   background: #1a140f; color: #f3efe6; box-shadow: 0 2px 6px rgba(0, 0, 0, .4); }
 .cam-tile video { width: 100%; height: 100%; object-fit: cover; display: block; visibility: hidden; }
@@ -240,7 +242,14 @@ body.with-cams .felt-wrap .felt { height: min(100%, calc(100vw - 735px - var(--g
 .bidgrid { display: inline-grid; gap: 4px; }
 .bidgrid .bidrow { display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; }
 .bidgrid button { min-width: 54px; padding: 4px 6px; }
+.bidgrid button:hover:not(:disabled):not(.primary) { background: var(--chip); }
 .choice-label { font-weight: 600; margin-top: 8px; }
+.contract-cols { display: flex; gap: 16px; justify-content: center; margin-top: 4px; }
+.choice-col { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.choice-col .choice-label { margin: 0 0 2px; }
+.choice-col.mid { position: relative; justify-content: flex-end; min-width: 90px; }
+.choice-col .til { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 20px; font-weight: 600; }
+.contract-cols .suit-btn { width: 58px; height: 58px; min-width: 0; padding: 0; font-size: 36px; }
 /* Kulørknapper som små hvide kort, så sort er sort og rød er rød i begge temaer. */
 .suit-btn { font-size: 38px; min-width: 90px; padding: 6px 12px; line-height: 1.1; background: #fff; color: #111; border: 2px solid #ccc; }
 .suit-btn.red { color: var(--red); }
@@ -250,8 +259,7 @@ button.suit-btn.selected.red { color: var(--red); }
 
 /* Spillerens egne kort ligger på bordet lige over navneboksen og overlapper 50 %. */
 .my-hand { position: absolute; left: 50%; bottom: 74px; transform: translateX(-50%); display: flex; z-index: 6; }
-.my-hand .card + .card { margin-left: -39px; }
-.my-hand .card:not(.classic) + .card:not(.classic) { margin-left: -31px; }
+.my-hand .card + .card { margin-left: -50px; }
 .my-hand .covered-card { position: relative; margin-left: 14px; }
 .my-hand .covered-card > span { position: absolute; left: 0; right: 0; top: -20px; text-align: center; font-size: 12px; font-weight: bold;
   color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .7); }
@@ -259,7 +267,7 @@ button.suit-btn.selected.red { color: var(--red); }
 
 /* ---------- Kort ---------- */
 .card {
-  width: 62px; height: 90px; padding: 4px 6px;
+  width: 62px; height: 88px; padding: 4px 6px;
   border: 1px solid #999; border-radius: 6px;
   background: #fff; color: #111;
   display: flex; flex-direction: column; align-items: flex-start;
@@ -275,12 +283,12 @@ button.suit-btn.selected.red { color: var(--red); }
 .card.joker .s { font-size: 11px; }
 .card.back { padding: 0; border: none; background: none; overflow: hidden; }
 .card.back img { width: 100%; height: 100%; display: block; pointer-events: none; }
-.back-choices { display: flex; flex-wrap: wrap; gap: 12px; margin: 6px 0 10px; }
-.back-choice { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 13px; cursor: pointer; }
-.back-choice input { position: absolute; opacity: 0; pointer-events: none; }
-.back-choice img { width: 60px; height: 84px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0, 0, 0, .3); }
-.back-choice.on img { outline: 3px solid var(--accent); outline-offset: 2px; }
-.back-choice:has(input:disabled) { cursor: default; }
+.card-choices { display: flex; flex-wrap: wrap; gap: 14px; margin: 6px 0 10px; }
+.card-choice { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+.card-choice input { position: absolute; opacity: 0; pointer-events: none; }
+.card-choice .card { width: 60px; height: 84px; }
+.card-choice.on .card { outline: 3px solid var(--accent); outline-offset: 3px; }
+.card-modal { text-align: left; }
 .card.small { width: 36px; height: 50px; padding: 2px 3px; }
 .card.small .r { font-size: 13px; }
 .card.small .s { font-size: 14px; }
@@ -358,7 +366,7 @@ table.rounds tr:not(.lost) td.result { color: var(--accent); }
 .play-btn { padding: 2px 10px; border-radius: 50%; }
 
 /* ---------- Klassiske kort ---------- */
-.card.classic { padding: 0; border: none; background: #fff; overflow: hidden; height: 88px; }
+.card.classic { padding: 0; border: none; background: #fff; overflow: hidden; }
 .card.classic img { width: 100%; height: 100%; display: block; pointer-events: none; }
 .card.classic.small { height: 50px; padding: 0; }
 .card.classic.back { background: none; }
@@ -369,10 +377,19 @@ table.rounds tr:not(.lost) td.result { color: var(--accent); }
 .pile .card { box-shadow: 1px 1px 0 #fff, 2px 2px 0 rgba(0, 0, 0, .3), 0 2px 5px rgba(0, 0, 0, .4); }
 .pile span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 22px; font-weight: 800; color: #fff; text-shadow: 0 0 4px #000, 0 0 2px #000; }
 .pile.bump { animation: pop .5s ease-out; }
-.my-hand .card.classic { width: 78px; height: 110px; }
+/* Egne kort: 100×140 (samme for klassiske og simple kort). */
+.my-hand .card { width: 100px; height: 140px; }
+.my-hand .card.simple .r { font-size: 28px; }
+.my-hand .card.simple .s { font-size: 32px; }
+.my-hand .card.simple .s.big { font-size: 46px; right: 9px; bottom: 9px; }
+.my-hand .card.simple.joker .s { font-size: 13px; }
 
 /* ---------- Større spillede kort og den nye stikanimation ---------- */
-.center .played .card.classic { width: 90px; height: 126px; }
+.center .played .card { width: 90px; height: 126px; }
+.center .played .card.simple .r { font-size: 26px; }
+.center .played .card.simple .s { font-size: 30px; }
+.center .played .card.simple .s.big { font-size: 42px; right: 8px; bottom: 8px; }
+.center .played .card.simple.joker .s, .last-card .card.simple.joker .s { font-size: 14px; }
 .played.lifting .card { animation: lift .3s ease-out forwards; }
 .played.lifted .card { transform: scale(1.1); box-shadow: 0 0 0 4px var(--gold), 0 14px 26px rgba(0, 0, 0, .55); }
 @keyframes lift {
@@ -390,7 +407,7 @@ table.rounds tr:not(.lost) td.result { color: var(--accent); }
 .flipper .face-back { position: absolute; inset: 0; transform: rotateY(180deg); }
 .flipper .face-back .card { width: 100%; height: 100%; }
 @keyframes flip { from { transform: scale(1.1) rotateY(0); } to { transform: scale(1) rotateY(180deg); } }
-.center .played.stack .card.classic.back { width: 90px; height: 126px; }
+.center .played.stack .card.back { width: 90px; height: 126px; }
 .played.moving { animation: move .6s ease-in forwards; }
 @keyframes move {
   from { transform: translate(-50%, -50%) translate(var(--x), var(--y)) scale(1); opacity: 1; }
@@ -403,7 +420,7 @@ table.rounds tr:not(.lost) td.result { color: var(--accent); }
 .felt.show-last .felt-inner > :not(.last-trick) { filter: blur(3px) brightness(.8); }
 .last-trick { position: absolute; inset: 0; z-index: 20; cursor: pointer; }
 .last-card { position: absolute; }
-.last-card .card.classic { width: 90px; height: 126px; }
+.last-card .card { width: 90px; height: 126px; }
 .last-card.pos-bottom { bottom: 200px; left: 50%; transform: translateX(-50%); }
 .last-card.pos-top { top: 110px; left: 50%; transform: translateX(-50%); }
 .last-card.pos-left { left: 200px; top: 50%; transform: translateY(-50%); }
@@ -412,7 +429,7 @@ table.rounds tr:not(.lost) td.result { color: var(--accent); }
 .last-caption { position: absolute; left: 50%; top: 33%; transform: translate(-50%, -50%); background: rgba(0, 0, 0, .6); color: #fff; padding: 8px 14px; border-radius: 8px; white-space: nowrap; }
 
 /* ---------- Valg efter meldingen, på bordet over spillerens kort ---------- */
-.table-choice { position: absolute; left: 50%; bottom: 212px; transform: translateX(-50%); z-index: 7; max-width: 90%;
+.table-choice { position: absolute; left: 50%; bottom: 226px; transform: translateX(-50%); z-index: 7; max-width: 90%;
   background: var(--panel); color: var(--ink); border-radius: 10px; padding: 10px 18px 12px; text-align: center; box-shadow: 0 6px 20px rgba(0, 0, 0, .5); }
 .table-choice p { margin: 4px 0 8px; }
 .table-choice .row { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin: 6px 0; align-items: center; }
@@ -435,20 +452,15 @@ table.rounds tr:not(.lost) td.result { color: var(--accent); }
 .rp-player.pos-right { right: 10px; top: 50%; transform: translateY(-50%); flex-direction: column; }
 .rp-hand { display: flex; }
 /* Genafspilningen viser alle fire hænder, så kortene er mindre end ved bordet (ellers dækker de for hinanden). */
-#rp-table .card { width: 50px; height: 72px; }
-#rp-table .card.classic { height: 70px; }
+#rp-table .card { width: 50px; height: 70px; }
 #rp-table .card.small { width: 32px; height: 45px; }
-#rp-table .rp-hand .card.classic { width: 63px; height: 88px; }
-#rp-table .center .played .card.classic { width: 72px; height: 101px; }
+#rp-table .rp-hand .card { width: 63px; height: 88px; }
+#rp-table .center .played .card { width: 72px; height: 101px; }
 /* Top og bund: vandret med 50 % overlap som i spillet. Venstre og højre: lodret, så hjørnet med værdi og
    kulør stadig kan ses (det fylder knap en fjerdedel af kortets højde). */
 .rp-player.pos-top .rp-hand .card + .card, .rp-player.pos-bottom .rp-hand .card + .card { margin-left: -32px; }
-.rp-player.pos-top .rp-hand .card:not(.classic) + .card:not(.classic),
-.rp-player.pos-bottom .rp-hand .card:not(.classic) + .card:not(.classic) { margin-left: -25px; }
 .rp-player.pos-left .rp-hand, .rp-player.pos-right .rp-hand { flex-direction: column; }
 .rp-player.pos-left .rp-hand .card + .card, .rp-player.pos-right .rp-hand .card + .card { margin-top: -64px; }
-.rp-player.pos-left .rp-hand .card:not(.classic) + .card:not(.classic),
-.rp-player.pos-right .rp-hand .card:not(.classic) + .card:not(.classic) { margin-top: -26px; }
 .rp-controls { text-align: center; }
 .rp-controls .row { display: flex; gap: 6px; justify-content: center; align-items: center; flex-wrap: wrap; margin: 8px 0; }
 /* Styring og hastighed på én linje. */
@@ -488,7 +500,7 @@ table.rounds tr:not(.lost) td.result { color: var(--accent); }
 .trick-panel td .stik-box { display: inline-block; width: 13px; height: 13px; vertical-align: middle; }
 
 /* ---------- Hvis tur det er ---------- */
-.turn-hint { position: absolute; left: 50%; bottom: 196px; transform: translateX(-50%); z-index: 7; white-space: nowrap;
+.turn-hint { position: absolute; left: 50%; bottom: 298px; transform: translateX(-50%); z-index: 7; white-space: nowrap;
   background: rgba(0, 0, 0, .55); color: #fff; padding: 6px 14px; border-radius: 16px; font-weight: 600; }
 /* Tre prikker der tændes én ad gangen over navneboksen hos den spiller, der er i gang. */
 .seat-wrap .thinking-dots { position: absolute; left: 0; right: 0; top: -22px; display: flex; justify-content: center; gap: 5px; }

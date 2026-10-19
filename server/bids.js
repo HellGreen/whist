@@ -36,17 +36,8 @@ const suffixIndex = key => SUFFIXES.findIndex(x => x.key === key);
 // jernhaand: en spiller uden billedkort, esser og jokere kan kræve, at der gives om.
 const OPTIONS = { hold: true, jernhaand: true };
 
-// Bagsider ejeren kan vælge mellem (public/cards/backs/<key>.svg). Den første er standard.
-export const CARD_BACKS = [
-  { key: 'blaa', label: 'Blå' },
-  { key: 'roed', label: 'Rød' },
-  { key: 'groen', label: 'Grøn' },
-  { key: 'ternet', label: 'Ternet' },
-  { key: 'sortguld', label: 'Sort og guld' },
-];
-
 export function defaultRules() {
-  return { bids: Object.fromEntries([...SUFFIXES, ...NOLOS].map(o => [o.key, o.default])), ...OPTIONS, cardBack: CARD_BACKS[0].key };
+  return { bids: Object.fromEntries([...SUFFIXES, ...NOLOS].map(o => [o.key, o.default])), ...OPTIONS };
 }
 
 export function sanitizeRules(raw) {
@@ -57,7 +48,6 @@ export function sanitizeRules(raw) {
   for (const key of Object.keys(OPTIONS)) {
     if (typeof raw?.[key] === 'boolean') rules[key] = raw[key];
   }
-  if (CARD_BACKS.some(b => b.key === raw?.cardBack)) rules.cardBack = raw.cardBack;
   return rules;
 }
 
@@ -98,7 +88,6 @@ export function rulesInfo() {
   const strip = ({ key, label, desc }) => ({ key, label, desc });
   return {
     suffixes: SUFFIXES.map(strip),
-    nolos: NOLOS.map(x => ({ ...strip(x), level: x.level, points: x.points, maxTricks: x.maxTricks })),
-    cardBacks: CARD_BACKS,
+    nolos: NOLOS.map(x => ({ ...strip(x), level: x.level, points: x.points, maxTricks: x.maxTricks, open: x.open })),
   };
 }

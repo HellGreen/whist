@@ -292,7 +292,7 @@ server/
 public/       klienten (ren HTML/CSS/JS, intet byggetrin)
   cams.js     webcam og lyd ved bordet (WebRTC)
   cards/classic/  klassiske kort som SVG (CC0, se LICENSE.txt i mappen)
-  cards/backs/    bagsider, som bordets ejer vælger mellem før spillet
+  cards/backs/    bagsider, som hver spiller selv vælger (knappen Kort)
 test/         tests af spilmotoren
 tools/        simulering med fire bots
 ```

@@ -6,6 +6,7 @@ const socket = io();
 const NAME_KEY = 'whist.name';
 const THEME_KEY = 'whist.theme';
 const CARD_THEME_KEY = 'whist.cards';
+const CARD_BACK_KEY = 'whist.back';
 
 const SUIT_SYM = { S: '♠', H: '♥', C: '♣', D: '♦' };
 const SUIT_NAME = { S: 'spar', H: 'hjerter', C: 'klør', D: 'ruder', NT: 'uden trumf' };
@@ -113,10 +114,7 @@ setInterval(() => {
 
 const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
 const isDark = () => (document.documentElement.dataset.theme ?? (darkQuery.matches ? 'dark' : 'light')) === 'dark';
-const themeButton = () => `<button data-action="theme" title="Skift mellem lyst og mørkt tema">${isDark() ? '☀️ Lyst' : '🌙 Mørkt'}</button>`
-  + cardThemeButton();
-// Korttemaet vælger hver spiller selv (det huskes i browseren).
-const cardThemeButton = () => `<button data-action="cardTheme" title="Skift mellem klassiske og simple kort">🂡 ${cardTheme() === 'classic' ? 'Simple kort' : 'Klassiske kort'}</button>`;
+const themeButton = () => `<button data-action="theme" title="Skift mellem lyst og mørkt tema">${isDark() ? '☀️' : '🌙'} Tema</button>`;
 darkQuery.addEventListener('change', () => render());
 
 // ---------- Tegning ----------
@@ -144,11 +142,17 @@ function render() {
 
 // Bordets indhold er lagt ud på en flade på 900×900 px og skaleres til bordets størrelse,
 // så kort, tekster og bobler står ens – uden at overlappe – på alle skærmstørrelser.
+// Bordet kan skifte størrelse, uden at vinduet gør det (fx når kamerakolonnen dukker op efter F5),
+// så størrelsen følges med en ResizeObserver.
+const setScale = felt => felt.style.setProperty('--k', felt.clientWidth / 900);
+const feltObserver = new ResizeObserver(entries => entries.forEach(e => setScale(e.target)));
 function fitFelt() {
+  feltObserver.disconnect();
   const felt = document.querySelector('.game-felt');
-  if (felt) felt.style.setProperty('--k', felt.clientWidth / 900);
+  if (!felt) return;
+  setScale(felt);
+  feltObserver.observe(felt);
 }
-window.addEventListener('resize', fitFelt);
 
 // Stopuret for betænkningstid holder pause, mens spilleren kigger på stilling, historik,
 // genafspilning eller sidste stik. Serveren får besked, når det skifter.
@@ -184,7 +188,12 @@ function lobbyScreen() {
       <h2>Online (${state.online.length})</h2>
       <ul class="online">${state.online.map(p => `<li><span class="dot on"></span>${esc(p.name)}${p.atTable ? ' <span class="muted">· ved bordet</span>' : ''}</li>`).join('')}</ul>
     </section>
-    <section class="box">${t ? tableBox(t) : noTableBox()}</section>
+    <div class="lobby-main">
+      <section class="box">${t ? tableBox(t) : noTableBox()}</section>
+      <section class="box">${cardPicker()}</section>
+      ${t ? `<section class="box">${tableRulesBox(t, t.ownerId === state.me.id && t.status === 'waiting' && !t.reserved)}</section>
+      <section class="box">${whistRulesBox(t)}</section>` : ''}
+    </div>
     <section class="box menu">
       <div class="me">${esc(state.me.name)} <button class="link" data-action="logout">skift navn</button></div>
       <button data-action="history">Historik</button>
@@ -245,26 +254,34 @@ function tableBox(t) {
     <ul class="seats">${seats}</ul>
     <div class="actions">${actions}</div>
     ${addBots}
-    ${playing ? '' : '<p class="muted">Spillet starter, når alle fire spillere har trykket Klar.</p>'}
-    ${rulesBox(t, isOwner && t.status === 'waiting' && !t.reserved)}`;
+    ${playing ? '' : '<p class="muted">Spillet starter, når alle fire spillere har trykket Klar.</p>'}`;
 }
 
-function rulesBox(t, editable) {
+// Kortenes forside og bagside. Hver spiller vælger selv (det huskes i browseren).
+function cardPicker() {
+  const choice = (name, value, on, label, img) => `<label class="card-choice ${on ? 'on' : ''}">
+    <input type="radio" name="${name}" data-${name}="${value}" ${on ? 'checked' : ''}>${img}<span>${esc(label)}</span></label>`;
+  return `<h2>Kort</h2>
+    <p class="muted">Dit eget valg – de andre ved bordet vælger selv.</p>
+    <h4>Forside</h4>
+    <div class="card-choices">${[['classic', 'Klassisk'], ['simple', 'Simpel']].map(([key, label]) =>
+      choice('card-theme', key, cardTheme() === key, label, cardHtml('S13', { theme: key }))).join('')}</div>
+    <h4>Bagside</h4>
+    <div class="card-choices">${CARD_BACKS.map(b =>
+      choice('card-back', b.key, cardBack() === b.key, b.label, `<div class="card back"><img src="cards/backs/${b.key}.svg" alt=""></div>`)).join('')}</div>`;
+}
+
+// Bordets regler: ejeren slår påhæng, nolo-meldinger og regler for melderunden til og fra.
+function tableRulesBox(t, editable) {
   const info = state.rulesInfo;
   const opt = o => `<label class="opt"><input type="checkbox" data-rule="${o.key}" ${t.rules.bids[o.key] ? 'checked' : ''} ${editable ? '' : 'disabled'}>
     <span><b>${esc(o.label)}</b> – ${esc(o.desc)}</span></label>`;
-  const order = info.suffixes.filter(s => t.rules.bids[s.key]).map(s => s.label).join(' < ');
-  const nolos = info.nolos.filter(x => t.rules.bids[x.key]);
   return `<div class="rules">
-    <h3>Regler</h3>
-    <p>Es-makker whist med 55 kort (3 jokere) og en kat på 3 kort. Meldingerne 7–13 kan altid meldes.
-      ${editable ? 'Som bordets ejer kan du slå påhæng og nolo-meldinger til og fra.' : ''}</p>
+    <h2>Bordets regler</h2>
+    <p class="muted">${editable ? 'Som bordets ejer kan du slå påhæng, nolo-meldinger og reglerne for melderunden til og fra.' : 'Bordets ejer bestemmer reglerne.'}
+      Meldingerne 7–13 kan altid meldes.</p>
     <h4>Påhæng</h4>${info.suffixes.map(opt).join('')}
     <h4>Nolo-meldinger</h4>${info.nolos.map(opt).join('')}
-    <h4>Bagside</h4>
-    <div class="back-choices">${info.cardBacks.map(b => `<label class="back-choice ${cardBack() === b.key ? 'on' : ''}">
-      <input type="radio" name="cardBack" data-rule-back="${b.key}" ${cardBack() === b.key ? 'checked' : ''} ${editable ? '' : 'disabled'}>
-      <img src="cards/backs/${b.key}.svg" alt=""><span>${esc(b.label)}</span></label>`).join('')}</div>
     <h4>Melderunden</h4>
     <label class="opt"><input type="checkbox" data-rule-opt="hold" ${t.rules.hold !== false ? 'checked' : ''} ${editable ? '' : 'disabled'}>
       <span><b>Hold</b> – en spiller tidligere i melderækkefølgen (forhånd først) må melde det samme som en senere spiller
@@ -272,6 +289,17 @@ function rulesBox(t, editable) {
     <label class="opt"><input type="checkbox" data-rule-opt="jernhaand" ${t.rules.jernhaand !== false ? 'checked' : ''} ${editable ? '' : 'disabled'}>
       <span><b>Jernhånd</b> – en spiller uden billedkort, esser og jokere kan, når det er vedkommendes tur til at melde,
       kræve at der gives kort igen.</span></label>
+  </div>`;
+}
+
+// Spillets regler, som de gælder med bordets valg.
+function whistRulesBox(t) {
+  const info = state.rulesInfo;
+  const order = info.suffixes.filter(s => t.rules.bids[s.key]).map(s => s.label).join(' < ');
+  const nolos = info.nolos.filter(x => t.rules.bids[x.key]);
+  return `<div class="rules">
+    <h2>Whist-regler</h2>
+    <p>Es-makker whist med 55 kort (3 jokere) og en kat på 3 kort.</p>
     <h4>Rangorden</h4>
     <ul>
       <li>Et antal stik med påhæng slår samme antal uden: 8 halve slår 8, men 9 slår 8 med påhæng.</li>
@@ -307,24 +335,33 @@ const cardTheme = () => {
   return CARD_THEMES.includes(theme) ? theme : 'classic';
 };
 
-function cardFace(card) {
-  if (cardTheme() === 'classic') return `<img src="cards/classic/${card}.svg" alt="${cardText(card)}" draggable="false">`;
+function cardFace(card, theme = cardTheme()) {
+  if (theme === 'classic') return `<img src="cards/classic/${card}.svg" alt="${cardText(card)}" draggable="false">`;
   if (card[0] === 'J') return '<span class="r">★</span><span class="s">JOKER</span>';
   return `<span class="r">${RANK_SYM[+card.slice(1)] ?? card.slice(1)}</span><span class="s">${SUIT_SYM[card[0]]}</span><span class="s big">${SUIT_SYM[card[0]]}</span>`;
 }
 
-function cardHtml(card, { action, disabled, selected, small, fromKat } = {}) {
+function cardHtml(card, { action, disabled, selected, small, fromKat, theme = cardTheme() } = {}) {
   if (card === 'X') return backHtml(small); // fordækt kort: vises aldrig for bordet
-  const cls = ['card', cardTheme(), isRed(card) && 'red', card[0] === 'J' && 'joker', small && 'small',
+  const cls = ['card', theme, isRed(card) && 'red', card[0] === 'J' && 'joker', small && 'small',
     selected && 'selected', fromKat && 'fromkat'].filter(Boolean).join(' ');
   return action
-    ? `<button class="${cls}" data-action="${action}" data-card="${card}" ${disabled ? 'disabled' : ''}>${cardFace(card)}</button>`
-    : `<div class="${cls}">${cardFace(card)}</div>`;
+    ? `<button class="${cls}" data-action="${action}" data-card="${card}" ${disabled ? 'disabled' : ''}>${cardFace(card, theme)}</button>`
+    : `<div class="${cls}">${cardFace(card, theme)}</div>`;
 }
-// Bagsiden vælges af bordets ejer og er den samme for alle ved bordet.
-const cardBack = () => state.table?.rules?.cardBack ?? 'blaa';
-const backHtml = small => `<div class="card ${cardTheme() === 'classic' ? 'classic' : ''} back ${small ? 'small' : ''}">`
-  + `<img src="cards/backs/${cardBack()}.svg" alt="" draggable="false"></div>`;
+// Bagsider (public/cards/backs/<key>.svg). Hver spiller vælger selv; den første er standard.
+const CARD_BACKS = [
+  { key: 'blaa', label: 'Blå' },
+  { key: 'roed', label: 'Rød' },
+  { key: 'groen', label: 'Grøn' },
+  { key: 'ternet', label: 'Ternet' },
+  { key: 'sortguld', label: 'Sort og guld' },
+];
+const cardBack = () => {
+  const back = storage.get(CARD_BACK_KEY);
+  return CARD_BACKS.some(b => b.key === back) ? back : CARD_BACKS[0].key;
+};
+const backHtml = small => `<div class="card back ${small ? 'small' : ''}"><img src="cards/backs/${cardBack()}.svg" alt="" draggable="false"></div>`;
 const backs = (n, small) => Array.from({ length: n }, () => backHtml(small)).join('');
 
 // Kulørtegn i rød/sort på en lys plade, så de kan ses i både lyst og mørkt tema.
@@ -419,6 +456,7 @@ function gameScreen(t) {
           <div class="round-head">Runde ${t.rounds.length + (g.phase === 'roundEnd' ? 0 : 1)}</div>
           <div class="round-buttons">
             <button data-action="standings">Stilling</button>
+            <button data-action="cards">🂡 Kort</button>
             ${themeButton()}
             ${isOwner ? '<button data-action="save">Gem bordet</button><button class="danger" data-action="end">Afslut spil</button>' : ''}
           </div>
@@ -661,7 +699,9 @@ function bidGrid(t, g) {
     rows.push(`<div class="bidrow">${btn({ n, suffix: null }, String(n))}${suffixes.map(s => btn({ n, suffix: s.key }, `${n} ${s.label}`)).join('')}</div>`);
   }
   const nolos = info.nolos.filter(x => t.rules.bids[x.key]);
-  if (nolos.length) rows.push(`<div class="bidrow">${nolos.map(x => btn({ nolo: x.key }, x.label)).join('')}</div>`);
+  for (const pair of [nolos.filter(x => !x.open), nolos.filter(x => x.open)]) {
+    if (pair.length) rows.push(`<div class="bidrow">${pair.map(x => btn({ nolo: x.key }, x.label)).join('')}</div>`);
+  }
   const iron = g.canIronHand ? `<button data-action="ironHand" title="Ingen billedkort, esser eller jokere – der gives kort igen">Jernhånd</button>` : '';
   return `<p><b>Din tur til at melde.</b></p>
     <div class="bidgrid">${rows.join('')}</div>
@@ -681,17 +721,25 @@ function contractChooser(g) {
   const ready = (!choosesTrump || ui.trump) && (!needsAce || ui.ace);
   let html = `<p>Du fik meldingen <b>${esc(c.label)}</b>.${fixed ? ` Trumf er ${trumpText(fixed)}.` : ''}
     ${sfx === 'halve' ? ' Kald et es – makker vælger trumf.' : ''}${sfx === 'vip' ? ' Kald et es – derefter vippes trumf fra katten.' : ''}</p>`;
-  if (choosesTrump) html += `<div class="choice-label">Trumf</div><div class="row">${suitButtons('pickTrump', ui.trump)}</div>`;
+  // Valget læses fra venstre mod højre: Trumf … til … Makker-es, med Bekræft i midten.
+  const confirm = `<button class="primary" data-action="confirmContract" ${ready ? '' : 'disabled'}>Bekræft</button>`;
+  const cols = [];
+  if (choosesTrump) cols.push(`<div class="choice-col"><div class="choice-label">Trumf</div>${suitButtons('pickTrump', ui.trump)}</div>`);
   if (needsAce) {
     const aces = ['S', 'H', 'C', 'D'].map(s => {
       const ace = s + '14';
       const blocked = trump && trump !== 'NT' && s === trump;
       return `<button class="suit-btn ${isRed(s) ? 'red' : ''} ${ui.ace === ace ? 'selected' : ''}" data-action="pickAce" data-ace="${ace}" ${blocked ? 'disabled' : ''}>${SUIT_SYM[s]}</button>`;
     }).join('');
-    html += `<div class="choice-label">Makker-es</div><div class="row">${aces}</div>`;
-    if (ui.ace && g.hand.includes(ui.ace)) html += '<p class="muted">Du har selv esset – du bliver selvmakker og spiller om dobbelte point.</p>';
+    cols.push(`<div class="choice-col"><div class="choice-label">Makker-es</div>${aces}</div>`);
   }
-  return html + `<div class="row"><button class="primary" data-action="confirmContract" ${ready ? '' : 'disabled'}>Bekræft</button></div>`;
+  if (cols.length === 2) {
+    html += `<div class="contract-cols">${cols[0]}<div class="choice-col mid"><span class="til">til</span>${confirm}</div>${cols[1]}</div>`;
+  } else {
+    html += `<div class="contract-cols">${cols[0]}</div><div class="row">${confirm}</div>`;
+  }
+  if (needsAce && ui.ace && g.hand.includes(ui.ace)) html += '<p class="muted">Du har selv esset – du bliver selvmakker og spiller om dobbelte point.</p>';
+  return html;
 }
 
 function handHtml(g, me, anim) {
@@ -768,6 +816,8 @@ function renderModal() {
       ${tabContent(modal.tab, players, t.rounds, 'standings', t.sessionId)}`;
   } else if (modal.type === 'history') {
     html = historyHtml(modal);
+  } else if (modal.type === 'cards') {
+    html = `<div class="card-modal">${cardPicker()}</div>`;
   }
   el.innerHTML = `<div class="box ${modal.wide ? 'wide' : ''}"><button class="close" data-action="closeModal">Luk</button>${html}</div>`;
   el.classList.remove('hidden');
@@ -1183,10 +1233,8 @@ function replayPlay() {
 // ---------- Handlinger ----------
 
 const actions = {
-  cardTheme() {
-    storage.set(CARD_THEME_KEY, cardTheme() === 'classic' ? 'simple' : 'classic');
-    if (replay) document.getElementById('app').innerHTML = '';
-    render();
+  cards() {
+    setModal({ type: 'cards' });
   },
   theme() {
     const theme = isDark() ? 'light' : 'dark';
@@ -1324,11 +1372,14 @@ document.addEventListener('change', e => {
     else replay.hidden.add(Number(hide));
     return render();
   }
-  const { rule, ruleOpt, ruleBack } = e.target.dataset ?? {};
-  if (!rule && !ruleOpt && !ruleBack) return;
+  const { rule, ruleOpt, cardTheme: theme, cardBack: back } = e.target.dataset ?? {};
+  if (theme || back) {
+    storage.set(theme ? CARD_THEME_KEY : CARD_BACK_KEY, theme ?? back);
+    return render();
+  }
+  if (!rule && !ruleOpt) return;
   const rules = structuredClone(state.table.rules);
   if (rule) rules.bids[rule] = e.target.checked;
-  else if (ruleBack) rules.cardBack = ruleBack;
   else rules[ruleOpt] = e.target.checked;
   socket.emit('table:rules', rules);
 });
