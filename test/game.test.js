@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { bidRank, defaultRules } from '../server/bids.js';
+import { bidRank, defaultRules, noloDef } from '../server/bids.js';
+const noloDefOf = c => noloDef(c.bid.nolo).maxTricks;
 import * as G from '../server/game.js';
 import { scoreRound } from '../server/scoring.js';
 
@@ -496,4 +497,62 @@ test('alle fire esser: melderen kan kun kalde et eget es og bliver selvmakker', 
   G.chooseContract(s, 0, { trump: 'S', ace: 'H14' });
   assert.ok(s.contract.selfCall);
   assert.throws(() => G.chooseContract(s, 0, { trump: 'S', ace: 'S13' }));
+});
+
+test('AI: makker efter esset spiller jokere, trækker trumf for melderen og melder "gode" i stedet for ren klør', async () => {
+  const { decide, voidSuits, PROFILES } = await import('../server/ai.js');
+  const flawless = { ...PROFILES.normal, gamble: 0 };
+  let jokers = 0, trumps = 0, inFront = 0;
+  for (let i = 0; i < 600; i++) {
+    const s = G.newRound(i % 4, rules);
+    for (let guard = 0; guard < 200 && !['passed', 'roundEnd'].includes(s.phase); guard++) {
+      const seat = s.turn, d = decide(s, seat, flawless), c = s.contract;
+      if (d.type === 'contract' && c.bid.suffix == null) assert.notEqual(d.trump, 'C', 'ren melding med klør som trumf');
+      if (d.type === 'play' && !s.trick.length && c.trump !== 'NT' && c.acePlayed && c.partner === seat && seat !== c.declarer) {
+        const legal = G.legalCards(s, seat);
+        if (legal.some(G.isJoker)) {
+          jokers++;
+          assert.ok(G.isJoker(d.card), `makker burde spille joker ud, spillede ${d.card}`);
+        } else if (c.declarer === (seat + 1) % 4) {
+          inFront++;
+          if (!legal.every(x => x[0] === c.trump)) assert.notEqual(d.card[0], c.trump, 'makker lige foran melderen trak trumf');
+        } else if (legal.some(x => x[0] === c.trump) && [0, 1, 2, 3].some(o => o !== seat && o !== c.declarer && !voidSuits(s, o).has(c.trump))) {
+          trumps++;
+          const top = legal.filter(x => x[0] === c.trump).sort((a, b) => G.rankOf(b) - G.rankOf(a))[0];
+          assert.equal(d.card, top, 'makker burde spille højeste trumf ud');
+        }
+      }
+      ({ bid: () => G.bid(s, seat, d.bid), contract: () => G.chooseContract(s, seat, d), halveTrump: () => G.halveTrump(s, seat, d.trump),
+        vip: () => G.vip(s, seat, d.accept), exchange: () => G.exchange(s, seat, d.take), discard: () => G.discard(s, seat, d.cards),
+        cover: () => G.cover(s, seat, d.card), play: () => G.play(s, seat, d.card) })[d.type]();
+    }
+  }
+  assert.ok(jokers > 0 && trumps > 0 && inFront > 0, `for få situationer: ${jokers}/${trumps}/${inFront}`);
+});
+
+test('AI ved nolo: en nolo-spiller der er gået ned, hjælper med at vælte de andre', async () => {
+  const { decide, PROFILES } = await import('../server/ai.js');
+  const flawless = { ...PROFILES.risky, gamble: 0 };
+  let checked = 0;
+  for (let i = 0; i < 3000 && checked < 20; i++) {
+    const s = G.newRound(i % 4, rules);
+    for (let guard = 0; guard < 200 && !['passed', 'roundEnd'].includes(s.phase); guard++) {
+      const seat = s.turn, d = decide(s, seat, flawless), c = s.contract;
+      if (d.type === 'play' && c.bid.nolo && s.trick.length) {
+        const max = noloDefOf(c);
+        const live = G.soloistsOf(c).filter(x => s.tricks[x] <= max);
+        const winner = G.trickWinnerOf(s.trick, null, true);
+        const wins = card => G.trickWinnerOf([...s.trick, { seat, card }], null, true) === seat;
+        // Gået ned, og en anden nolo-spiller har stikket: lad vedkommende beholde det.
+        if (G.soloistsOf(c).includes(seat) && !live.includes(seat) && live.includes(winner) && G.legalCards(s, seat).some(x => !wins(x))) {
+          checked++;
+          assert.ok(!wins(d.card), 'nolo-spilleren der er gået ned, overtog stikket fra en anden nolo-spiller');
+        }
+      }
+      ({ bid: () => G.bid(s, seat, d.bid), contract: () => G.chooseContract(s, seat, d), halveTrump: () => G.halveTrump(s, seat, d.trump),
+        vip: () => G.vip(s, seat, d.accept), exchange: () => G.exchange(s, seat, d.take), discard: () => G.discard(s, seat, d.cards),
+        cover: () => G.cover(s, seat, d.card), play: () => G.play(s, seat, d.card) })[d.type]();
+    }
+  }
+  assert.ok(checked > 0, 'testen ramte ingen relevante situationer');
 });

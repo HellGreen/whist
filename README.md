@@ -22,7 +22,15 @@ En "fejl" er indtil videre et tilfældigt lovligt kort i stedet for det kort, AI
 
 AI'en ser kun sin egen hånd og det, der er offentligt ved bordet (meldinger, spillede kort, kendt makker). Den
 vurderer hånden med tommelfingerregler (`server/ai.js`), kalder esset i sin længste farve, trækker trumf når den
-har topkortene, lader makker beholde et sikkert stik, og dukker under i sol. AI-spillere gemmes i databasen som
+har topkortene, lader makker beholde et sikkert stik, og dukker under i sol. Den melder "gode" i stedet for en ren
+melding, når klør alligevel bliver trumf.
+
+Som makker, efter at makker-esset er spillet, spiller AI'en ud i denne rækkefølge: jokere; højeste trumf (for at
+trække trumf for melderen – men ikke når den sidder lige foran melderen); sikre stik i sidekulørerne (esser, derefter
+konge, dame … når de er blevet højest); en kulør melderen har vist sig renonce i, så melderen kan stikke.
+
+Ved sol o.l. med flere nolo-spillere prøver en AI at gå hjem som normalt. Er den gået ned, spiller den videre som
+modspiller og hjælper med at vælte de andre nolo-spillere. AI-spillere gemmes i databasen som
 almindelige spillere (`AI Normal 1`, `AI Normal 2`, `AI Forsigtig 1` osv.), så de også optræder i stilling og historik.
 
 ## Kør lokalt

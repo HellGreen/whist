@@ -1,6 +1,6 @@
 // AI-spillere. De ser kun deres egen hånd og det, der er offentligt ved bordet
 // (meldinger, spillede kort, kendt makker), og træffer valg ud fra simple tommelfingerregler.
-import { bidRank } from './bids.js';
+import { bidRank, noloDef } from './bids.js';
 import {
   ACES, SUITS, allowedBids, canIronHand, canJoin, isJoker, isJokerPlay, ledSuitOf, playSuit, legalCards, rankOf, soloistsOf, suitOf, trickWinnerOf, trumpSuit,
 } from './game.js';
@@ -105,7 +105,9 @@ function chooseBid(s, seat, p) {
   const wanted = [];
   const best = bestTrump(hand);
   const capacity = trick => Math.min(13, Math.floor(trick + PARTNER_TRICKS + p.margin));
-  for (let n = 7; n <= capacity(best.tricks); n++) wanted.push({ n, suffix: null });
+  // Bliver klør trumf alligevel, meldes "gode" i stedet for en ren melding – det giver dobbelte point.
+  const plain = best.suit !== 'C' || !s.rules.bids.gode;
+  if (plain) for (let n = 7; n <= capacity(best.tricks); n++) wanted.push({ n, suffix: null });
   for (let n = 7; n <= capacity(ownTricks(hand, 'C')); n++) wanted.push({ n, suffix: 'gode' });
   for (let n = 7; n <= capacity(ownTricks(hand, 'S')); n++) wanted.push({ n, suffix: 'staerke' });
   for (let n = 7; n <= capacity(ownTricks(hand, null)); n++) wanted.push({ n, suffix: 'trumfloese' });
@@ -242,6 +244,32 @@ function playCard(s, seat, p) {
   return s.contract.bid.nolo ? playNolo(s, seat, legal) : playTrump(s, seat, legal);
 }
 
+// Makker, der har spillet makker-esset, hjælper melderen, når den selv skal spille ud:
+// 1) jokere, 2) højeste trumf for at trække trumf – ikke når makker sidder lige foran melderen,
+// 3) sikre stik i sidekulørerne (esser, og derefter konge, dame … når de er blevet højest),
+// 4) en kulør melderen er renonce i, så melderen kan stikke med trumf.
+function leadAsPartner(s, seat, legal) {
+  const c = s.contract, trump = trumpSuit(s);
+  if (!c.acePlayed || c.partner !== seat || seat === c.declarer) return null;
+  const joker = legal.find(isJoker);
+  if (joker) return joker;
+  const real = legal.filter(x => !isJoker(x));
+  if (trump && c.declarer !== (seat + 1) % 4) {
+    const trumps = real.filter(x => suitOf(x) === trump);
+    const opponents = [0, 1, 2, 3].filter(x => x !== seat && x !== c.declarer);
+    const trumpsLeft = !opponents.every(o => voidSuits(s, o).has(trump)); // modspillerne kan stadig have trumf
+    if (trumps.length && trumpsLeft) return highest(trumps);
+  }
+  const masters = real.filter(x => suitOf(x) !== trump && isMaster(s, seat, x));
+  if (masters.length) return highest(masters);
+  if (trump) {
+    const voids = voidSuits(s, c.declarer);
+    const ruff = real.filter(x => suitOf(x) !== trump && voids.has(suitOf(x)));
+    if (ruff.length && !voids.has(trump)) return lowest(ruff);
+  }
+  return null;
+}
+
 function playTrump(s, seat, legal) {
   const c = s.contract, trump = trumpSuit(s), hand = s.hands[seat];
   const team = teamView(s, seat);
@@ -249,8 +277,11 @@ function playTrump(s, seat, legal) {
   const discard = () => lowest(sideCards.length ? sideCards : legal);
 
   if (!s.trick.length) {
+    const forDeclarer = leadAsPartner(s, seat, legal);
+    if (forDeclarer) return forDeclarer;
     const masters = legal.filter(x => isMaster(s, seat, x));
-    if (team.onAttack && trump) {
+    const inFront = c.acePlayed && c.partner === seat && c.declarer === (seat + 1) % 4; // makker lige foran melderen
+    if (team.onAttack && trump && !inFront) {
       const seen = seenCards(s, seat);
       const trumpsOut = Array.from({ length: 13 }, (_, i) => trump + (i + 2)).some(x => !seen.has(x));
       const masterTrumps = masters.filter(x => !isJoker(x) && suitOf(x) === trump);
@@ -285,7 +316,10 @@ function playTrump(s, seat, legal) {
 }
 
 function playNolo(s, seat, legal) {
-  const c = s.contract, soloists = soloistsOf(c);
+  const c = s.contract, max = noloDef(c.bid.nolo).maxTricks;
+  // Kun nolo-spillere, der stadig kan gå hjem. En der er gået ned, spiller videre som modspiller og hjælper
+  // med at vælte de andre (går én hjem og én ned, betaler taberen vinderen 3 gange grundpoint).
+  const soloists = soloistsOf(c).filter(x => s.tricks[x] <= max);
   const low = cards => lowest(cards, noloValue);
   const high = cards => highest(cards, noloValue);
   const losing = legal.filter(x => !winsWith(s, seat, x));
@@ -319,7 +353,8 @@ function playNolo(s, seat, legal) {
   }
   // Udspillet bør gå til spilleren lige før melderen: så skal melderen bekende som nummer to
   // uden at kende resten af stikket og må typisk bruge et lavt kort.
-  const beforeDeclarer = (c.declarer + 3) % 4;
+  const target = soloists.includes(c.declarer) ? c.declarer : soloists[0];
+  const beforeDeclarer = (target + 3) % 4;
   if (declarerPlayed) {
     if (seat === beforeDeclarer) {
       const winning = legal.filter(x => winsWith(s, seat, x));
