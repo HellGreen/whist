@@ -108,7 +108,14 @@ function request(event, ...args) {
 // Nedtælling til næste runde opdateres uden at tegne hele siden igen.
 setInterval(() => {
   const secs = Math.max(0, Math.ceil((nextRoundDeadline - Date.now()) / 1000));
-  for (const el of document.querySelectorAll('[data-countdown]')) el.textContent = secs;
+  for (const el of document.querySelectorAll('[data-countdown]')) {
+    if (el.textContent === String(secs)) continue;
+    // Hvert nyt tal starter stort og skrumper til tekstens størrelse.
+    el.textContent = secs;
+    el.classList.remove('tick');
+    void el.offsetWidth; // genstart animationen
+    el.classList.add('tick');
+  }
 }, 250);
 
 // ---------- Tema ----------
@@ -499,18 +506,20 @@ function seatHtml(t, g, seat, pos, tricks, anim) {
   if (c?.declarer === seat && c.hasCovered) tags.push('Fordækt kort');
   const peek = g.lastCompleted?.winner === seat && (!anim || anim.phase === 'done');
   const pile = g.phase === 'play' || g.phase === 'roundEnd' ? trickPile(tricks[seat], anim?.bump && anim.winner === seat, peek) : '';
-  const openHand = g.openHands?.find(o => o.seat === seat);
-  const open = openHand ? `<div class="open-hand">${openHand.cards.map(x => cardHtml(x, { small: true })).join('')}</div>` : '';
   const thinking = g.turn === seat && seat !== t.mySeat && g.phase !== 'bidding' && (!anim || anim.phase === 'done');
-  return `<div class="seat-wrap pos-${pos}">
-    ${thinking ? '<div class="thinking-dots" title="Det er denne spillers tur"><span></span><span></span><span></span></div>' : ''}
+  const row = `${thinking ? '<div class="thinking-dots" title="Det er denne spillers tur"><span></span><span></span><span></span></div>' : ''}
     <div class="seat ${g.turn === seat ? 'turn' : ''} ${p.online ? '' : 'offline'}">
       <div class="name">${p.bot ? '🤖 ' : ''}${esc(p.name)}${p.online ? '' : ' (offline)'}</div>
       ${tags.length ? `<div class="tags">${tags.map(x => `<span class="tag">${x}</span>`).join('')}</div>` : ''}
-      ${open}
     </div>
-    ${pile}
-  </div>`;
+    ${pile}`;
+  // Bordlægger: kortene ligger åbent som en kortrække under navnet – vandret øverst, lodret i siderne (aldrig split).
+  const openHand = g.openHands?.find(o => o.seat === seat);
+  if (openHand) {
+    return `<div class="seat-wrap pos-${pos} has-open"><div class="seat-row">${row}</div>
+      <div class="open-hand">${openHand.cards.map(x => cardHtml(x)).join('')}</div></div>`;
+  }
+  return `<div class="seat-wrap pos-${pos}">${row}</div>`;
 }
 
 // Et færdigt stik afvikles i faser:
@@ -589,7 +598,7 @@ function resultBox(t, g) {
     <h3>${title}</h3>
     ${outcome}${covered}
     <table class="pts">${t.seats.map((p, i) => `<tr><td>${esc(p.name)}</td><td class="num ${r.points[i] < 0 ? 'neg' : ''}">${fmtPts(r.points[i])}</td></tr>`).join('')}</table>
-    <p class="muted">Næste runde om <b data-countdown>${Math.ceil(t.nextRoundIn / 1000)}</b> sek.</p>
+    <p class="muted next-round">Næste runde om <b data-countdown class="tick">${Math.ceil(t.nextRoundIn / 1000)}</b> sek.</p>
   </div>`;
 }
 

@@ -570,3 +570,16 @@ test('AI-meldinger: på samme hånd melder Forsigtig et stik under Normal, og Vo
   }
   assert.ok(compared > 20, `for få hænder: ${compared}`);
 });
+
+test('bordlægger: melderens kort lægges først åbent efter første stik', () => {
+  const s = G.newRound(3, rules);
+  playTo(s, s.forehand, { nolo: 'bord' });
+  G.exchange(s, s.turn, false);
+  assert.equal(s.phase, 'play');
+  const declarer = s.contract.declarer, other = (declarer + 1) % 4;
+  for (let i = 0; i < 4; i++) {
+    assert.deepEqual(G.view(s, other).openHands, [], `kortene var åbne efter ${i} kort`);
+    G.play(s, s.turn, G.legalCards(s, s.turn)[0]);
+  }
+  assert.deepEqual(G.view(s, other).openHands.map(o => o.seat), [declarer]);
+});

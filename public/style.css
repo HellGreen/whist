@@ -238,7 +238,17 @@ body.with-cams .felt-wrap .felt { height: min(100%, calc(100vw - 695px - var(--g
 .seat-wrap { position: absolute; display: flex; align-items: center; gap: 8px; }
 .seat-wrap .seat { position: static; }
 .seat .tag { font-size: 12px; }
-.seat .open-hand { display: flex; flex-wrap: wrap; justify-content: center; max-width: 220px; gap: 2px; }
+/* Bordlægger: åbne kort som kortrække under navnet. Øverst som egen kortrække, i siderne lodret. */
+.seat-wrap.has-open { flex-direction: column; gap: 8px; }
+.seat-row { position: relative; display: flex; align-items: center; gap: 8px; }
+.seat-wrap.pos-right .seat-row { flex-direction: row-reverse; }
+.open-hand { display: flex; }
+.seat-wrap.pos-top .open-hand { margin-top: 30px; } /* fri af meldingsboksen i hjørnet */
+.seat-wrap.pos-top .open-hand .card { width: 100px; height: 140px; }
+.seat-wrap.pos-top .open-hand .card + .card { margin-left: -50px; }
+.seat-wrap.pos-left .open-hand, .seat-wrap.pos-right .open-hand { flex-direction: column; }
+.seat-wrap.pos-left .open-hand .card, .seat-wrap.pos-right .open-hand .card { width: 63px; height: 88px; }
+.seat-wrap.pos-left .open-hand .card + .card, .seat-wrap.pos-right .open-hand .card + .card { margin-top: -64px; }
 
 /* Bordets indhold i spillet: 900×900 px, skaleret til bordet (--k sættes af fitFelt i app.js). */
 .felt-inner { position: absolute; left: 0; top: 0; width: 900px; height: 900px; transform-origin: 0 0; transform: scale(var(--k, 1)); }
@@ -369,6 +379,11 @@ button.card:disabled { opacity: 1; filter: brightness(.7); }
 .result-box { position: absolute; inset: -4%; background: var(--panel); color: var(--ink); border-radius: 12px; padding: 12px 16px; text-align: center; box-shadow: 0 8px 30px rgba(0, 0, 0, .5); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; animation: pop .3s ease-out; }
 .result-box h3 { margin: 0; }
 .result-box p { margin: 2px 0; }
+/* Nedtællingen: to linjers luft over, og tallet springer op i 250 % og skrumper til tekstens størrelse. */
+.result-box p.next-round { margin-top: 2.8em; height: 1.6em; display: flex; align-items: center; justify-content: center; gap: .3em; }
+.next-round b { display: inline-block; min-width: 1.2em; line-height: 1; }
+.next-round b.tick { animation: count-tick .9s ease-out; }
+@keyframes count-tick { from { font-size: 250%; } to { font-size: 100%; } }
 .result-box table.pts td { padding: 2px 10px; font-size: 17px; }
 .result-box td.num { text-align: right; font-weight: 700; color: var(--accent); }
 .result-box td.num.neg { color: var(--danger); }
@@ -413,10 +428,10 @@ table.rounds tr:not(.lost) td.result { color: var(--accent); }
 .pile.bump { animation: pop .5s ease-out; }
 /* Egne kort: 100×140 (samme for klassiske og simple kort). */
 .my-hand .card { width: 100px; height: 140px; }
-.my-hand .card.simple .r { font-size: 28px; }
-.my-hand .card.simple .s { font-size: 32px; }
-.my-hand .card.simple .s.big { font-size: 46px; right: 9px; bottom: 9px; }
-.my-hand .card.simple.joker .s { font-size: 13px; }
+.my-hand .card.simple .r, .seat-wrap.pos-top .open-hand .card.simple .r { font-size: 28px; }
+.my-hand .card.simple .s, .seat-wrap.pos-top .open-hand .card.simple .s { font-size: 32px; }
+.my-hand .card.simple .s.big, .seat-wrap.pos-top .open-hand .card.simple .s.big { font-size: 46px; right: 9px; bottom: 9px; }
+.my-hand .card.simple.joker .s, .seat-wrap.pos-top .open-hand .card.simple.joker .s { font-size: 13px; }
 
 /* ---------- Større spillede kort og den nye stikanimation ---------- */
 .center .played .card { width: 90px; height: 126px; }

@@ -24,9 +24,9 @@ export const NOLOS = [
   { key: 'rensol', label: 'Ren sol', level: 10, maxTricks: 0, points: 2, open: false, default: true,
     desc: 'Som sol, men melderen må ikke tage nogen stik.' },
   { key: 'bord', label: 'Bordlægger', level: 11, maxTricks: 1, points: 4, open: true, default: true,
-    desc: 'Som sol, men melderens kort lægges åbent efter første udspil.' },
+    desc: 'Som sol, men melderens kort lægges åbent efter første stik.' },
   { key: 'renbord', label: 'Ren bordlægger', level: 12, maxTricks: 0, points: 8, open: true, default: true,
-    desc: 'Som ren sol, men melderens kort lægges åbent efter første udspil.' },
+    desc: 'Som ren sol, men melderens kort lægges åbent efter første stik.' },
 ];
 
 export const noloDef = key => NOLOS.find(x => x.key === key);

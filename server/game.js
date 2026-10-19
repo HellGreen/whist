@@ -370,7 +370,6 @@ export function play(s, seat, card) {
   if (!s.trick.length) s.lastTrick = null;
   s.trick.push(entry);
   (s.plays ??= []).push(entry);
-  if (c.bid.nolo && noloDef(c.bid.nolo).open) s.openHand = true;
   if (card === c.ace) {
     c.partnerRevealed = true;
     c.acePlayed = true;
@@ -385,6 +384,7 @@ export function play(s, seat, card) {
   s.lastTrick = { cards: s.trick, winner };
   s.trick = [];
   s.turn = winner;
+  if (c.bid.nolo && noloDef(c.bid.nolo).open) s.openHand = true; // bordlægger: kortene lægges åbent efter første stik
   // Nolo: spillet fortsætter, til alle nolo-spillere har taget for mange stik (eller 13 stik er spillet).
   const allFailed = c.bid.nolo && soloistsOf(c).every(x => s.tricks[x] > noloDef(c.bid.nolo).maxTricks);
   if (allFailed || s.tricks.reduce((a, b) => a + b) === 13) {
@@ -470,7 +470,7 @@ export function view(s, seat) {
     lastTrick: s.lastTrick && { ...s.lastTrick, cards: s.lastTrick.cards.map(hideCovered) },
     lastCompleted: lastCompleted(s),
     tricks: s.tricks,
-    // Bordlægger: nolo-spillernes kort ligger åbent efter første udspil.
+    // Bordlægger: nolo-spillernes kort ligger åbent efter første stik.
     openHands: s.openHand ? soloistsOf(c).filter(x => x !== seat).map(x => ({ seat: x, cards: sortCards(s.hands[x], true) })) : [],
     result: s.result,
   };
