@@ -14,7 +14,7 @@ Ledige pladser ved bordet kan fyldes med AI-spillere, så man kan spille (eller 
 
 | Profil    | Melder                                                                   |
 |-----------|--------------------------------------------------------------------------|
-| Forsigtig | egne stik + 1 fra makker, sjældent nolo                                   |
+| Forsigtig | egne stik + 1 fra makker                                                  |
 | Normal    | egne stik + 2 fra makker                                                  |
 | Vovehals  | egne stik + 2 fra makker, ofte et stik mere (håb om katten)               |
 
