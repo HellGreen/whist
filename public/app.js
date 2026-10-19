@@ -113,7 +113,10 @@ setInterval(() => {
 
 const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
 const isDark = () => (document.documentElement.dataset.theme ?? (darkQuery.matches ? 'dark' : 'light')) === 'dark';
-const themeButton = () => `<button data-action="theme" title="Skift mellem lyst og mørkt tema">${isDark() ? '☀️ Lyst' : '🌙 Mørkt'}</button>`;
+const themeButton = () => `<button data-action="theme" title="Skift mellem lyst og mørkt tema">${isDark() ? '☀️ Lyst' : '🌙 Mørkt'}</button>`
+  + cardThemeButton();
+// Korttemaet vælger hver spiller selv (det huskes i browseren).
+const cardThemeButton = () => `<button data-action="cardTheme" title="Skift mellem klassiske og simple kort">🂡 ${cardTheme() === 'classic' ? 'Simple kort' : 'Klassiske kort'}</button>`;
 darkQuery.addEventListener('change', () => render());
 
 // ---------- Tegning ----------
@@ -133,10 +136,19 @@ function render() {
     const t = state.table;
     lastTrickOpen = false;
     app.innerHTML = t?.game && t.mySeat >= 0 ? gameScreen(t) : lobbyScreen();
+    fitFelt();
   }
   renderModal();
   syncAway();
 }
+
+// Bordets indhold er lagt ud på en flade på 900×900 px og skaleres til bordets størrelse,
+// så kort, tekster og bobler står ens – uden at overlappe – på alle skærmstørrelser.
+function fitFelt() {
+  const felt = document.querySelector('.game-felt');
+  if (felt) felt.style.setProperty('--k', felt.clientWidth / 900);
+}
+window.addEventListener('resize', fitFelt);
 
 // Stopuret for betænkningstid holder pause, mens spilleren kigger på stilling, historik,
 // genafspilning eller sidste stik. Serveren får besked, når det skifter.
@@ -390,7 +402,7 @@ function gameScreen(t) {
   return `<div class="game">
     <div class="table-area">
       <div class="felt-wrap">
-        <div class="felt ${showLast ? 'show-last' : ''}">
+        <div class="felt game-felt ${showLast ? 'show-last' : ''}"><div class="felt-inner">
           ${[0, 1, 2, 3].map(seat => seatHtml(t, g, seat, rel(seat), tricks, anim)).join('')}
           ${g.contract ? contractCorner(g.contract, tricks, s => t.seats[s].name) : ''}
           <div class="center">${centerHtml(t, g, rel, anim)}</div>
@@ -398,7 +410,7 @@ function gameScreen(t) {
           <div class="my-hand">${handHtml(g, me, anim)}</div>
           ${choice ? `<div class="table-choice">${choice}</div>` : ''}
           ${showLast ? lastTrickOverlay(g, rel) : ''}
-        </div>
+        </div></div>
       </div>
       <aside class="side">
         ${g.phase === 'bidding' && g.turn === me ? `<section class="panel">${bidGrid(t, g)}</section>` : ''}
@@ -1171,6 +1183,11 @@ function replayPlay() {
 // ---------- Handlinger ----------
 
 const actions = {
+  cardTheme() {
+    storage.set(CARD_THEME_KEY, cardTheme() === 'classic' ? 'simple' : 'classic');
+    if (replay) document.getElementById('app').innerHTML = '';
+    render();
+  },
   theme() {
     const theme = isDark() ? 'light' : 'dark';
     document.documentElement.dataset.theme = theme;
