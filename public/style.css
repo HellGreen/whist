@@ -110,8 +110,13 @@ header.top .contract { font-size: 15px; }
 @media (max-width: 1200px) { .lobby-main { grid-template-columns: 1fr; } }
 @media (max-width: 900px) { .lobby { grid-template-columns: 1fr; } }
 .lobby .menu { display: flex; flex-direction: column; gap: 8px; }
-.lobby .menu .me { font-weight: 700; margin-bottom: 4px; }
-.lobby .menu h2 { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--line); }
+.lobby .menu h2 { margin: 0; }
+.lobby .menu .online { margin-bottom: 8px; }
+/* Forsiden (intet bord): bordkassen højst 800 px og midt på siden, med menuen ved siden af til højre. */
+.lobby.front { grid-template-columns: 260px minmax(0, 800px) 260px; justify-content: center; }
+.lobby.front .lobby-main { grid-column: 2; }
+@media (max-width: 1400px) { .lobby.front { grid-template-columns: minmax(0, 800px) 260px; } .lobby.front .lobby-main { grid-column: 1; } }
+@media (max-width: 900px) { .lobby.front { grid-template-columns: 1fr; } .lobby.front .lobby-main { grid-column: auto; } }
 .lobby-main > .full { grid-column: 1 / -1; } /* bordet og kortvalget i fuld bredde, reglerne side om side */
 
 /* Stor titel midt på siden med fire esser i vifte. */

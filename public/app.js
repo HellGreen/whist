@@ -183,7 +183,7 @@ function titleHtml() {
 function lobbyScreen() {
   const t = state.table;
   return `${titleHtml()}
-  <main class="lobby">
+  <main class="lobby ${t ? '' : 'front'}">
     <div class="lobby-main">
       <section class="box full">${t ? tableBox(t) : noTableBox()}</section>
       ${t?.mySeat >= 0 ? `<section class="box full">${cardPicker()}</section>` : ''}
@@ -191,12 +191,12 @@ function lobbyScreen() {
       <section class="box">${whistRulesBox(t)}</section>` : ''}
     </div>
     <section class="box menu">
-      <div class="me">${esc(state.me.name)} <button class="link" data-action="logout">skift navn</button></div>
+      <h2>Online (${state.online.length})</h2>
+      <ul class="online">${state.online.map(p => `<li><span class="dot on"></span>${esc(p.name)}${p.atTable ? ' <span class="muted">· ved bordet</span>' : ''}
+        ${p.id === state.me.id ? '<button class="link" data-action="logout">skift navn</button>' : ''}</li>`).join('')}</ul>
       <button data-action="history">Historik</button>
       <button data-action="stats">Statistik</button>
       ${themeButton()}
-      <h2>Online (${state.online.length})</h2>
-      <ul class="online">${state.online.map(p => `<li><span class="dot on"></span>${esc(p.name)}${p.atTable ? ' <span class="muted">· ved bordet</span>' : ''}</li>`).join('')}</ul>
     </section>
   </main>
   ${t?.status === 'countdown' ? `<div class="countdown">${t.countdown}</div>` : ''}`;
