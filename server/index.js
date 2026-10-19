@@ -122,7 +122,7 @@ function setPaused(paused) {
 function leaveTable(id) {
   const seat = seatOf(id);
   if (seat < 0) return;
-  if (inGame()) throw new UserError('Spillet er i gang – bordets ejer kan gemme eller afslutte det');
+  if (inGame()) throw new UserError('Spillet er i gang – bordets vært kan gemme eller afslutte det');
   cancelCountdown();
   table.ready.delete(id);
   table.present.delete(id);
@@ -465,7 +465,7 @@ io.on('connection', socket => {
   };
   const owner = () => {
     const id = me();
-    if (!table || table.ownerId !== id) throw new UserError('Kun bordets ejer kan gøre det');
+    if (!table || table.ownerId !== id) throw new UserError('Kun bordets vært kan gøre det');
     return id;
   };
   const atTable = () => {

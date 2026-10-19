@@ -7,6 +7,7 @@ const NAME_KEY = 'whist.name';
 const THEME_KEY = 'whist.theme';
 const CARD_THEME_KEY = 'whist.cards';
 const CARD_BACK_KEY = 'whist.back';
+const SPLIT_KEY = 'whist.split';
 
 const SUIT_SYM = { S: '♠', H: '♥', C: '♣', D: '♦' };
 const SUIT_NAME = { S: 'spar', H: 'hjerter', C: 'klør', D: 'ruder', NT: 'uden trumf' };
@@ -227,7 +228,7 @@ function tableBox(t) {
     if (!s) return `<li class="empty">Ledig plads${canEditBots ? aiDropdown(i) : ''}</li>`;
     const remove = s.bot && canEditBots ? `<button class="link" data-action="removeBot" data-seat="${i}" title="Fjern AI-spilleren">✕</button>` : '';
     return `<li class="${s.ready ? 'ready' : ''}">${s.bot ? '<span class="bot">🤖</span>' : `<span class="dot ${s.online && s.present ? 'on' : ''}"></span>`}${esc(s.name)}
-      ${s.id === t.ownerId ? '<span class="tag">ejer</span>' : ''}
+      ${s.id === t.ownerId ? '<span class="tag">vært</span>' : ''}
       <span class="state">${s.ready ? '✔ Klar' : s.present ? 'Ikke klar' : 'Ikke ved bordet'}</span>${remove}</li>`;
   }).join('');
 
@@ -264,6 +265,7 @@ function cardPicker() {
     <input type="radio" name="${name}" data-${name}="${value}" ${on ? 'checked' : ''}>${img}<span>${esc(label)}</span></label>`;
   return `<h2>Kort</h2>
     <p class="muted">Dit eget valg – de andre ved bordet vælger selv.</p>
+    <label class="opt"><input type="checkbox" data-split-suits ${splitSuits() ? 'checked' : ''}> <span>Split hver kulør</span></label>
     <h4>Forside</h4>
     <div class="card-choices">${[['classic', 'Klassisk'], ['simple', 'Simpel']].map(([key, label]) =>
       choice('card-theme', key, cardTheme() === key, label, cardHtml('S13', { theme: key }))).join('')}</div>
@@ -272,14 +274,14 @@ function cardPicker() {
       choice('card-back', b.key, cardBack() === b.key, b.label, `<div class="card back"><img src="cards/backs/${b.key}.svg" alt=""></div>`)).join('')}</div>`;
 }
 
-// Bordets regler: ejeren slår påhæng, nolo-meldinger og regler for melderunden til og fra.
+// Bordets regler: værten slår påhæng, nolo-meldinger og regler for melderunden til og fra.
 function tableRulesBox(t, editable) {
   const info = state.rulesInfo;
   const opt = o => `<label class="opt"><input type="checkbox" data-rule="${o.key}" ${t.rules.bids[o.key] ? 'checked' : ''} ${editable ? '' : 'disabled'}>
     <span><b>${esc(o.label)}</b> – ${esc(o.desc)}</span></label>`;
   return `<div class="rules">
     <h2>Bordets regler</h2>
-    <p class="muted">${editable ? 'Som bordets ejer kan du slå påhæng, nolo-meldinger og reglerne for melderunden til og fra.' : 'Bordets ejer bestemmer reglerne.'}
+    <p class="muted">${editable ? 'Som bordets vært kan du slå påhæng, nolo-meldinger og reglerne for melderunden til og fra.' : 'Bordets vært bestemmer reglerne.'}
       Meldingerne 7–13 kan altid meldes.</p>
     <h4>Påhæng</h4>${info.suffixes.map(opt).join('')}
     <h4>Nolo-meldinger</h4>${info.nolos.map(opt).join('')}
@@ -342,10 +344,10 @@ function cardFace(card, theme = cardTheme()) {
   return `<span class="r">${RANK_SYM[+card.slice(1)] ?? card.slice(1)}</span><span class="s">${SUIT_SYM[card[0]]}</span><span class="s big">${SUIT_SYM[card[0]]}</span>`;
 }
 
-function cardHtml(card, { action, disabled, selected, small, fromKat, theme = cardTheme() } = {}) {
+function cardHtml(card, { action, disabled, selected, small, fromKat, gap, theme = cardTheme() } = {}) {
   if (card === 'X') return backHtml(small); // fordækt kort: vises aldrig for bordet
   const cls = ['card', theme, isRed(card) && 'red', card[0] === 'J' && 'joker', small && 'small',
-    selected && 'selected', fromKat && 'fromkat'].filter(Boolean).join(' ');
+    selected && 'selected', fromKat && 'fromkat', gap && 'gap'].filter(Boolean).join(' ');
   return action
     ? `<button class="${cls}" data-action="${action}" data-card="${card}" ${disabled ? 'disabled' : ''}>${cardFace(card, theme)}</button>`
     : `<div class="${cls}">${cardFace(card, theme)}</div>`;
@@ -445,7 +447,7 @@ function gameScreen(t) {
           ${g.contract ? contractCorner(g.contract, tricks, s => t.seats[s].name) : ''}
           <div class="center">${centerHtml(t, g, rel, anim)}</div>
           ${turnHint(t, g, anim)}
-          <div class="my-hand">${handHtml(g, me, anim)}</div>
+          ${myHand(g, me, anim)}
           ${choice ? `<div class="table-choice">${choice}</div>` : ''}
           ${showLast ? lastTrickOverlay(g, rel) : ''}
         </div></div>
@@ -710,7 +712,7 @@ function bidGrid(t, g) {
 }
 
 function suitButtons(action, selected, isDisabled = () => false) {
-  return ['S', 'H', 'C', 'D'].map(s => `<button class="suit-btn ${isRed(s) ? 'red' : ''} ${selected === s ? 'selected' : ''}" data-action="${action}" data-suit="${s}" ${isDisabled(s) ? 'disabled' : ''}>${SUIT_SYM[s]}</button>`).join('');
+  return ['S', 'H', 'C', 'D'].map(s => `<button class="suit-btn ${isRed(s) ? 'red' : ''} ${selected === s ? 'selected' : selected ? 'dim' : ''}" data-action="${action}" data-suit="${s}" ${isDisabled(s) ? 'disabled' : ''}>${SUIT_SYM[s]}</button>`).join('');
 }
 
 function contractChooser(g) {
@@ -730,7 +732,7 @@ function contractChooser(g) {
     const aces = ['S', 'H', 'C', 'D'].map(s => {
       const ace = s + '14';
       const blocked = trump && trump !== 'NT' && s === trump;
-      return `<button class="suit-btn ${isRed(s) ? 'red' : ''} ${ui.ace === ace ? 'selected' : ''}" data-action="pickAce" data-ace="${ace}" ${blocked ? 'disabled' : ''}>${SUIT_SYM[s]}</button>`;
+      return `<button class="suit-btn ${isRed(s) ? 'red' : ''} ${ui.ace === ace ? 'selected' : ui.ace ? 'dim' : ''}" data-action="pickAce" data-ace="${ace}" ${blocked ? 'disabled' : ''}>${SUIT_SYM[s]}</button>`;
     }).join('');
     cols.push(`<div class="choice-col"><div class="choice-label">Makker-es</div>${aces}</div>`);
   }
@@ -743,13 +745,34 @@ function contractChooser(g) {
   return html;
 }
 
-function handHtml(g, me, anim) {
+// "Split hver kulør": mellemrum mellem kulørerne (og jokerne) i egen kortrække. Huskes i browseren.
+const splitSuits = () => storage.get(SPLIT_KEY) === '1';
+
+// Egen kortrække. Med split ligger kortene tættere, så rækken med mellemrum stadig kan være på bordet:
+// hvert kort fylder --step px, og det første kort i en ny kulør står 8 px fra det forrige (der ses helt).
+function myHand(g, me, anim) {
+  const cards = handCards(g, me);
+  if (!splitSuits()) return `<div class="my-hand">${handHtml(g, me, anim)}</div>`;
+  const breaks = cards.filter((x, i) => i && x[0] !== cards[i - 1][0]).length;
+  const plain = cards.length - 1 - breaks;
+  const step = plain > 0 ? Math.max(24, Math.min(42, (860 - 100 - breaks * 108) / plain)) : 42;
+  return `<div class="my-hand split" style="--step: ${step}px">${handHtml(g, me, anim)}</div>`;
+}
+
+// Kortene i rækkefølge, som de vises (efter katten sorteres de på ny).
+function handCards(g, me) {
   const c = g.contract;
+  return g.phase === 'exchange' && g.turn === me && c.tookKat ? sortCards(g.hand, !!c.bid.nolo) : g.hand;
+}
+
+function handHtml(g, me, anim) {
+  const c = g.contract, cards = handCards(g, me);
+  const gap = (x, i) => splitSuits() && i > 0 && x[0] !== cards[i - 1][0];
   if (g.phase === 'exchange' && g.turn === me && c.tookKat) {
-    return sortCards(g.hand, !!c.bid.nolo).map(x => cardHtml(x, { action: 'toggleDiscard', selected: ui.discard.includes(x), fromKat: c.fromKat.includes(x) })).join('');
+    return cards.map((x, i) => cardHtml(x, { action: 'toggleDiscard', selected: ui.discard.includes(x), fromKat: c.fromKat.includes(x), gap: gap(x, i) })).join('');
   }
   if (g.phase === 'cover' && g.turn === me) {
-    return g.hand.map(x => cardHtml(x, { action: 'toggleCover', selected: ui.cover === x })).join('');
+    return cards.map((x, i) => cardHtml(x, { action: 'toggleCover', selected: ui.cover === x, gap: gap(x, i) })).join('');
   }
   // Melderens fordækte kort ligger for sig selv yderst til højre.
   const covered = c?.covered
@@ -757,9 +780,9 @@ function handHtml(g, me, anim) {
       ? cardHtml(c.covered, { action: 'play', disabled: !g.legal.includes(c.covered) }) : cardHtml(c.covered)}<span>fordækt</span></div>`
     : '';
   if (myTurnToPlay(g, me, anim)) {
-    return g.hand.map(x => cardHtml(x, { action: 'play', disabled: !g.legal.includes(x) })).join('') + covered;
+    return cards.map((x, i) => cardHtml(x, { action: 'play', disabled: !g.legal.includes(x), gap: gap(x, i) })).join('') + covered;
   }
-  return g.hand.map(x => cardHtml(x)).join('') + covered;
+  return cards.map((x, i) => cardHtml(x, { gap: gap(x, i) })).join('') + covered;
 }
 
 // Man kan ikke spille ud, mens det forrige stik bliver samlet ind.
@@ -772,7 +795,7 @@ function pausedOverlay(t, isOwner) {
     <p>Venter på, at ${missing.join(' og ')} kommer tilbage…</p>
     ${isOwner
       ? '<div class="actions" style="justify-content:center"><button class="primary" data-action="save">Gem bordet</button><button class="danger" data-action="end">Afslut spil</button></div>'
-      : '<p class="muted">Bordets ejer kan gemme bordet til en anden dag.</p>'}
+      : '<p class="muted">Bordets vært kan gemme bordet til en anden dag.</p>'}
   </div></div>`;
 }
 
@@ -1379,6 +1402,10 @@ document.addEventListener('change', e => {
   if (hide != null) {
     if (e.target.checked) replay.hidden.delete(Number(hide));
     else replay.hidden.add(Number(hide));
+    return render();
+  }
+  if (e.target.matches?.('[data-split-suits]')) {
+    storage.set(SPLIT_KEY, e.target.checked ? '1' : '0');
     return render();
   }
   const { rule, ruleOpt, cardTheme: theme, cardBack: back } = e.target.dataset ?? {};
