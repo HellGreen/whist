@@ -105,12 +105,14 @@ header.top button.link { color: #fff; }
 header.top .contract { font-size: 15px; }
 
 /* ---------- Venterum ---------- */
-.lobby { display: grid; grid-template-columns: 240px 1fr 220px; gap: 16px; padding: 0 16px 16px; max-width: 1600px; margin: 0 auto; align-items: start; }
+.lobby { display: grid; grid-template-columns: 1fr 260px; gap: 16px; padding: 0 16px 16px; max-width: 1600px; margin: 0 auto; align-items: start; }
 .lobby-main { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; min-width: 0; }
 @media (max-width: 1200px) { .lobby-main { grid-template-columns: 1fr; } }
 @media (max-width: 900px) { .lobby { grid-template-columns: 1fr; } }
 .lobby .menu { display: flex; flex-direction: column; gap: 8px; }
 .lobby .menu .me { font-weight: 700; margin-bottom: 4px; }
+.lobby .menu h2 { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--line); }
+.lobby-main > .full { grid-column: 1 / -1; } /* bordet og kortvalget i fuld bredde, reglerne side om side */
 
 /* Stor titel midt på siden med fire esser i vifte. */
 .title { display: flex; justify-content: center; align-items: center; gap: 28px; padding: 28px 16px 22px; }
@@ -351,8 +353,17 @@ button.card:disabled { opacity: 1; filter: brightness(.7); }
 /* ---------- Venterum: AI ---------- */
 .bot { margin-right: 6px; }
 .seats li .link { margin-left: 8px; }
-.add-bots { margin: 8px 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.add-bots ul { flex-basis: 100%; margin: 4px 0 0; padding-left: 18px; font-size: 14px; }
+/* "Tilføj AI" på en ledig plads */
+.ai-menu { position: relative; margin-left: auto; }
+.ai-menu > button { padding: 3px 10px; font-size: 14px; }
+.ai-menu-list { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; width: 280px; display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, .35); overflow: hidden; }
+.ai-menu-list button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; border: none;
+  border-bottom: 1px solid var(--line); border-radius: 0; padding: 8px 12px; color: var(--ink); }
+.ai-menu-list button:last-child { border-bottom: none; }
+.ai-menu-list button:hover { background: var(--chip); }
+.ai-menu-list span { font-weight: 600; }
+.ai-menu-list small { font-size: 12px; color: var(--muted); }
 
 /* ---------- Historik ---------- */
 .sessions { list-style: none; padding: 0; margin: 0; }

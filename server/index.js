@@ -524,10 +524,11 @@ io.on('connection', socket => {
 
   on('table:leave', () => leaveTable(me()));
 
-  on('table:addBot', profile => {
+  on('table:addBot', (profile, seat) => {
     atTable();
     if (table.status !== 'waiting' || table.reserved) throw new UserError('Der kan ikke tilføjes AI-spillere nu');
-    const free = table.seats.indexOf(null);
+    // Den valgte ledige plads – ellers den første ledige.
+    const free = Number.isInteger(seat) && table.seats[seat] === null ? seat : table.seats.indexOf(null);
     if (free < 0) throw new UserError('Bordet er fuldt');
     const id = addBot(profile);
     table.seats[free] = id;

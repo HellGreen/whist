@@ -184,13 +184,9 @@ function lobbyScreen() {
   const t = state.table;
   return `${titleHtml()}
   <main class="lobby">
-    <section class="box">
-      <h2>Online (${state.online.length})</h2>
-      <ul class="online">${state.online.map(p => `<li><span class="dot on"></span>${esc(p.name)}${p.atTable ? ' <span class="muted">· ved bordet</span>' : ''}</li>`).join('')}</ul>
-    </section>
     <div class="lobby-main">
-      <section class="box">${t ? tableBox(t) : noTableBox()}</section>
-      <section class="box">${cardPicker()}</section>
+      <section class="box full">${t ? tableBox(t) : noTableBox()}</section>
+      ${t?.mySeat >= 0 ? `<section class="box full">${cardPicker()}</section>` : ''}
       ${t ? `<section class="box">${tableRulesBox(t, t.ownerId === state.me.id && t.status === 'waiting' && !t.reserved)}</section>
       <section class="box">${whistRulesBox(t)}</section>` : ''}
     </div>
@@ -199,6 +195,8 @@ function lobbyScreen() {
       <button data-action="history">Historik</button>
       <button data-action="stats">Statistik</button>
       ${themeButton()}
+      <h2>Online (${state.online.length})</h2>
+      <ul class="online">${state.online.map(p => `<li><span class="dot on"></span>${esc(p.name)}${p.atTable ? ' <span class="muted">· ved bordet</span>' : ''}</li>`).join('')}</ul>
     </section>
   </main>
   ${t?.status === 'countdown' ? `<div class="countdown">${t.countdown}</div>` : ''}`;
@@ -226,7 +224,7 @@ function tableBox(t) {
   const canEditBots = seated && t.status === 'waiting' && !t.reserved;
 
   const seats = t.seats.map((s, i) => {
-    if (!s) return '<li class="empty">Ledig plads</li>';
+    if (!s) return `<li class="empty">Ledig plads${canEditBots ? aiDropdown(i) : ''}</li>`;
     const remove = s.bot && canEditBots ? `<button class="link" data-action="removeBot" data-seat="${i}" title="Fjern AI-spilleren">✕</button>` : '';
     return `<li class="${s.ready ? 'ready' : ''}">${s.bot ? '<span class="bot">🤖</span>' : `<span class="dot ${s.online && s.present ? 'on' : ''}"></span>`}${esc(s.name)}
       ${s.id === t.ownerId ? '<span class="tag">ejer</span>' : ''}
@@ -243,18 +241,21 @@ function tableBox(t) {
   }
   if (isOwner && !playing) actions += '<button class="danger" data-action="close">Luk bordet</button>';
 
-  const addBots = canEditBots && t.seats.includes(null)
-    ? `<div class="add-bots"><b>Tilføj AI-spiller:</b>
-        ${state.rulesInfo.aiProfiles.map(p => `<button data-action="addBot" data-profile="${p.key}" title="${esc(p.desc)}">🤖 ${esc(p.label)}</button>`).join('')}
-        <ul class="muted">${state.rulesInfo.aiProfiles.map(p => `<li><b>${esc(p.label)}:</b> ${esc(p.desc)}</li>`).join('')}</ul>
-      </div>` : '';
-
   return `<h2>Bordet</h2>
     ${t.reserved ? '<p class="muted">Genoptaget bord – kun spillerne fra sidst kan sætte sig. Spillet fortsætter, hvor I slap.</p>' : ''}
     <ul class="seats">${seats}</ul>
     <div class="actions">${actions}</div>
-    ${addBots}
     ${playing ? '' : '<p class="muted">Spillet starter, når alle fire spillere har trykket Klar.</p>'}`;
+}
+
+// "Tilføj AI" på en ledig plads: en liste med profilerne (navn og forklaring), der åbner under knappen.
+let aiMenu = null; // pladsen hvis liste er åben
+function aiDropdown(seat) {
+  const list = aiMenu === seat
+    ? `<div class="ai-menu-list">${state.rulesInfo.aiProfiles.map(p => `<button data-action="addBot" data-profile="${p.key}" data-seat="${seat}">
+        <span>🤖 ${esc(p.label)}</span><small>${esc(p.desc)}</small></button>`).join('')}</div>`
+    : '';
+  return `<div class="ai-menu"><button data-action="aiMenu" data-seat="${seat}">Tilføj AI ▾</button>${list}</div>`;
 }
 
 // Kortenes forside og bagside. Hver spiller vælger selv (det huskes i browseren).
@@ -1255,7 +1256,14 @@ const actions = {
   leave: () => socket.emit('table:leave'),
   close: () => socket.emit('table:end'),
   ready: () => socket.emit('table:ready', !state.table.seats[state.table.mySeat].ready),
-  addBot: d => socket.emit('table:addBot', d.profile),
+  aiMenu(d) {
+    aiMenu = aiMenu === Number(d.seat) ? null : Number(d.seat);
+    render();
+  },
+  addBot(d) {
+    aiMenu = null;
+    socket.emit('table:addBot', d.profile, Number(d.seat));
+  },
   removeBot: d => socket.emit('table:removeBot', Number(d.seat)),
   save: () => confirm('Gem bordet og send alle tilbage til venterummet?') && socket.emit('table:save'),
   end: () => confirm('Afslut spillet for alle? Stillingen gemmes i historikken.') && socket.emit('table:end'),
@@ -1327,6 +1335,7 @@ const actions = {
 
 document.addEventListener('click', e => {
   if (e.target.id === 'modal') return actions.closeModal();
+  if (aiMenu != null && !e.target.closest('.ai-menu')) { aiMenu = null; render(); } // klik udenfor lukker listen
   const el = e.target.closest('[data-action]');
   if (el && !el.disabled) actions[el.dataset.action]?.(el.dataset);
 });
