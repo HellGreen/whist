@@ -720,8 +720,8 @@ function bidGrid(t, g) {
     <div class="row">${iron}<button class="danger" data-action="pass">Pas</button></div>`;
 }
 
-function suitButtons(action, selected, isDisabled = () => false) {
-  return ['S', 'H', 'C', 'D'].map(s => `<button class="suit-btn ${isRed(s) ? 'red' : ''} ${selected === s ? 'selected' : selected ? 'dim' : ''}" data-action="${action}" data-suit="${s}" ${isDisabled(s) ? 'disabled' : ''}>${SUIT_SYM[s]}</button>`).join('');
+function suitButtons(action, selected, isDisabled = () => false, dimAll = false) {
+  return ['S', 'H', 'C', 'D'].map(s => `<button class="suit-btn ${isRed(s) ? 'red' : ''} ${selected === s ? 'selected' : selected || dimAll ? 'dim' : ''}" data-action="${action}" data-suit="${s}" ${isDisabled(s) ? 'disabled' : ''}>${SUIT_SYM[s]}</button>`).join('');
 }
 
 function contractChooser(g) {
@@ -731,12 +731,15 @@ function contractChooser(g) {
   const trump = choosesTrump ? ui.trump : fixed ?? null;
   const needsAce = sfx !== 'kvarte';
   const ready = (!choosesTrump || ui.trump) && (!needsAce || ui.ace);
-  let html = `<p>Du fik meldingen <b>${esc(c.label)}</b>.${fixed ? ` Trumf er ${trumpText(fixed)}.` : ''}
+  // Fast trumf (gode, stærke, trumfløse) vises som et valg, der allerede er truffet og ikke kan ændres.
+  let html = `<p>Du fik meldingen <b>${esc(c.label)}</b>.
     ${sfx === 'halve' ? ' Kald et es – makker vælger trumf.' : ''}${sfx === 'vip' ? ' Kald et es – derefter vippes trumf fra katten.' : ''}</p>`;
   // Valget læses fra venstre mod højre: Trumf … til … Makker-es, med Bekræft i midten.
   const confirm = `<button class="primary" data-action="confirmContract" ${ready ? '' : 'disabled'}>Bekræft</button>`;
   const cols = [];
   if (choosesTrump) cols.push(`<div class="choice-col"><div class="choice-label">Trumf</div>${suitButtons('pickTrump', ui.trump)}</div>`);
+  else if (fixed === 'NT') cols.push(`<div class="choice-col fixed"><div class="choice-label">Uden trumf</div>${suitButtons('pickTrump', null, () => true, true)}</div>`);
+  else if (fixed) cols.push(`<div class="choice-col fixed"><div class="choice-label">Trumf</div>${suitButtons('pickTrump', fixed, () => true)}</div>`);
   if (needsAce) {
     const aces = ['S', 'H', 'C', 'D'].map(s => {
       const ace = s + '14';

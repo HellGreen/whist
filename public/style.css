@@ -289,6 +289,7 @@ button.suit-btn.selected.red { color: var(--red); }
 /* Når der er valgt i en kolonne, bliver de andre grå, så valget står tydeligt. */
 button.suit-btn.dim { background: #9a968e; border-color: #8a867e; color: #3a3833; }
 button.suit-btn.dim.red { color: #6e2a2a; }
+.choice-col.fixed .suit-btn:disabled { opacity: 1; } /* fast trumf: klør valgt, de andre grå */
 
 /* Spillerens egne kort ligger på bordet lige over navneboksen og overlapper 50 %. */
 .my-hand { position: absolute; left: 50%; bottom: 74px; transform: translateX(-50%); display: flex; z-index: 6; }
