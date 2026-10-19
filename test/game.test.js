@@ -258,7 +258,7 @@ test('melderens klient ser ikke makker, før makker-esset er spillet', () => {
 
 test('AI ved nolo: modspillere spiller ikke ud i en kulør, melderen er renonce i', async () => {
   const { decide, voidSuits, PROFILES } = await import('../server/ai.js');
-  const flawless = { ...PROFILES.normal, gamble: 0 }; // uden tilfældige fejl, så strategien måles
+  const flawless = { ...PROFILES.normal, gamble: 0, solDanger: 3, strictDanger: 3, solSum: 999 }; // uden tilfældige fejl og med mange nolo-spil
   const rulesAll = { bids: Object.fromEntries(Object.keys(rules.bids).map(k => [k, true])) };
   let checked = 0;
   for (let i = 0; i < 600; i++) {
@@ -285,7 +285,7 @@ test('AI ved nolo: modspillere spiller ikke ud i en kulør, melderen er renonce 
 
 test('AI ved nolo: modspillerne giver udspillet til spilleren lige før melderen', async () => {
   const { decide, PROFILES } = await import('../server/ai.js');
-  const flawless = { ...PROFILES.normal, gamble: 0 };
+  const flawless = { ...PROFILES.normal, gamble: 0, solDanger: 3, strictDanger: 3, solSum: 999 };
   const rulesAll = { bids: Object.fromEntries(Object.keys(rules.bids).map(k => [k, true])) };
   let grabbed = 0, kept = 0;
   for (let i = 0; i < 600; i++) {
@@ -532,7 +532,7 @@ test('AI: makker efter esset spiller jokere, trækker trumf for melderen og meld
 
 test('AI ved nolo: en nolo-spiller der er gået ned, hjælper med at vælte de andre', async () => {
   const { decide, PROFILES } = await import('../server/ai.js');
-  const flawless = { ...PROFILES.risky, gamble: 0 };
+  const flawless = { ...PROFILES.risky, gamble: 0, solDanger: 3, strictDanger: 3, solSum: 999 }; // løs sol-tærskel, så der spilles mange nolo-spil
   let checked = 0;
   for (let i = 0; i < 3000 && checked < 20; i++) {
     const s = G.newRound(i % 4, rules);
@@ -555,4 +555,18 @@ test('AI ved nolo: en nolo-spiller der er gået ned, hjælper med at vælte de a
     }
   }
   assert.ok(checked > 0, 'testen ramte ingen relevante situationer');
+});
+
+test('AI-meldinger: på samme hånd melder Forsigtig et stik under Normal, og Vovehals mindst som Normal', async () => {
+  const { decide } = await import('../server/ai.js');
+  let compared = 0;
+  for (let i = 0; i < 500; i++) {
+    const s = G.newRound(i % 4, rules);
+    const [safe, normal, risky] = ['safe', 'normal', 'risky'].map(p => decide(s, s.turn, p).bid);
+    if (![safe, normal, risky].every(b => b?.n)) continue;
+    compared++;
+    if (normal.n < 13) assert.equal(normal.n - safe.n, 1, `Forsigtig ${safe.n}, Normal ${normal.n}`);
+    assert.ok(risky.n >= normal.n && risky.n <= normal.n + 1, `Normal ${normal.n}, Vovehals ${risky.n}`);
+  }
+  assert.ok(compared > 20, `for få hænder: ${compared}`);
 });

@@ -5,18 +5,23 @@ import {
   ACES, SUITS, allowedBids, canIronHand, canJoin, isJoker, isJokerPlay, ledSuitOf, playSuit, legalCards, rankOf, soloistsOf, suitOf, trickWinnerOf, trumpSuit,
 } from './game.js';
 
+// Profilerne adskiller sig i meldingerne. Alle laver lige mange fejl i stikspillet (gamble).
+// partnerHelp: stik man regner med fra makker oven i sine egne. stretch: sandsynlighed for at melde et stik mere
+// (for at maksimere pointene eller i håb om hjælp fra katten). solDanger / strictDanger: hvor mange farepoint
+// (farligt kort = 1, halvfarligt = 0,5, se noloDanger) hånden må have til sol / ren sol og bordlæggerne.
+const ERROR_RATE = 0.07;
 export const PROFILES = {
   safe: {
-    key: 'safe', label: 'Forsigtig', desc: 'Melder lavt og sikkert og laver få fejl.',
-    margin: -0.5, noloSlack: 0.5, vipLength: 4, gamble: 0.02,
+    key: 'safe', label: 'Forsigtig', desc: 'Melder forsigtigt og regner kun med ét stik fra makker.',
+    partnerHelp: 1, stretch: 0.05, solDanger: 1, strictDanger: 0.5, solSum: 65, vipLength: 4, gamble: ERROR_RATE,
   },
   normal: {
-    key: 'normal', label: 'Normal', desc: 'Melder realistisk og laver nogle fejl.',
-    margin: 0, noloSlack: 1.5, vipLength: 3, gamble: 0.05,
+    key: 'normal', label: 'Normal', desc: 'Melder realistisk og regner med to stik fra makker.',
+    partnerHelp: 2, stretch: 0.05, solDanger: 2, strictDanger: 1, solSum: 63, vipLength: 3, gamble: ERROR_RATE,
   },
   risky: {
-    key: 'risky', label: 'Vovehals', desc: 'Melder højt, går gerne efter sol og tager chancer i spillet.',
-    margin: 1, noloSlack: 2.5, vipLength: 3, gamble: 0.08,
+    key: 'risky', label: 'Vovehals', desc: 'Melder ofte et stik over evne og tør melde sol med flere farlige kort.',
+    partnerHelp: 2, stretch: 0.5, solDanger: 3, strictDanger: 1.5, solSum: 62, vipLength: 3, gamble: ERROR_RATE,
     selfCall: 0.5, // kalder eget es (selvmakker, dobbelte point), når sikre stik + dette antal (hjælp fra katten) ≥ meldingen; ca. 3 % af trumfrunderne
   },
 };
@@ -31,8 +36,9 @@ const highest = (cards, value = cardValue) => [...cards].sort((a, b) => value(b)
 
 // ---------- Vurdering af hånden ----------
 
-// Forventet antal stik på egen hånd med den givne trumf (null = uden trumf).
-// En joker giver et sikkert stik, når den spilles ud.
+// Forventet antal stik på egen hånd med den givne trumf (null = uden trumf), hvis alt går godt.
+// Tæller jokere (et sikkert stik, når de spilles ud), topkort og længde i trumf, esser og konger i sidekulørerne
+// samt renoncer og singletons, hvor man kan stikke med trumf.
 export function ownTricks(hand, trump) {
   const trumpLength = trump ? ranksIn(hand, trump).length : 0;
   let tricks = jokersIn(hand);
@@ -40,12 +46,13 @@ export function ownTricks(hand, trump) {
     const r = ranksIn(hand, suit);
     if (suit === trump) {
       if (r.includes(14)) tricks += 1;
-      if (r.includes(13) && trumpLength >= 2) tricks += r.includes(14) ? 1 : 0.6;
-      if (r.includes(12) && trumpLength >= 3) tricks += 0.5;
+      if (r.includes(13) && trumpLength >= 2) tricks += r.includes(14) || trumpLength >= 3 ? 1 : 0.6;
+      // Damen er stærk sammen med konge eller bonde (fx E-D-B og små).
+      if (r.includes(12) && trumpLength >= 3) tricks += r.includes(13) || r.includes(11) ? 1 : 0.5;
       tricks += Math.max(0, trumpLength - 3) * 0.9;
     } else {
       if (r.includes(14)) tricks += 1;
-      if (r.includes(13) && r.length >= 2) tricks += r.includes(14) ? 0.8 : 0.4;
+      if (r.includes(13) && r.length >= 2) tricks += r.includes(14) ? 1 : 0.5;
       if (trump && trumpLength >= 3) {
         if (r.length === 0) tricks += 0.8;
         else if (r.length === 1 && r[0] !== 14) tricks += 0.4;
@@ -91,34 +98,62 @@ export function noloDanger(hand) {
   return Math.max(0, danger - 0.5 * jokersIn(hand));
 }
 
+// Summen af kortenes værdi i et nolo-spil (esset er 1, B=11, D=12, K=13, jokere 0) – jo lavere, jo bedre.
+// Undtagelse: i en lang kulør (5+ kort) løber modspillerne hurtigt tør, så kun de laveste kort, de kan nå at
+// tvinge ud, tæller fuldt. Resten er sikre ved ren sol (man er alligevel nede ved første stik), men ved sol tæller
+// de halvt: har man taget sit ene stik, kan man sidde fast med udspillet i den lange kulør og tage flere.
+export function noloSum(hand, clean = false) {
+  let sum = 0;
+  for (const suit of SUITS) {
+    const r = ranksIn(hand, suit).map(x => (x === 14 ? 1 : x)).sort((a, b) => a - b);
+    const forced = r.length >= 5 ? Math.ceil((13 - r.length) / 2) : r.length;
+    r.forEach((rank, i) => { sum += i < forced ? rank : clean ? 0 : rank / 2; });
+  }
+  return sum;
+}
+
 // ---------- Beslutninger ----------
 
-const PARTNER_TRICKS = 2.5; // makker-esset + lidt hjælp + katten
-const NOLO_EXTRA = { sol: 0, rensol: 1.5, bord: 1, renbord: 2.5 };
+// Grænser for nolo: farepoint (se noloDanger) og kortsum (se noloSum). Sumgrænsen falder 5 for hvert trin over sol.
+const NOLO_SUM_STEP = { sol: 0, rensol: 5, bord: 10, renbord: 15 };
+function noloFits(p, hand, key) {
+  const danger = key === 'sol' ? p.solDanger : p.strictDanger;
+  const clean = key === 'rensol' || key === 'renbord';
+  return noloDanger(hand) <= danger && noloSum(hand, clean) <= p.solSum - NOLO_SUM_STEP[key];
+}
 const bidKey = b => b.nolo ?? `${b.n}:${b.suffix ?? ''}`;
+
+// Fast tal i [0;1) for hånden, så et vovestykke ikke slås om, hver gang AI'en er i tur i melderunden.
+function handRoll(hand) {
+  let h = 2166136261;
+  for (const ch of [...hand].sort().join()) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  return (h >>> 0) / 2 ** 32;
+}
 
 function chooseBid(s, seat, p) {
   const hand = s.hands[seat];
   // Gå med på en nolo-melding, hvis hånden selv er god nok til den.
-  if (canJoin(s, seat) && noloDanger(hand) <= p.noloSlack - NOLO_EXTRA[s.high.bid.nolo]) return { join: true };
+  if (canJoin(s, seat) && noloFits(p, hand, s.high.bid.nolo)) return { join: true };
   const allowed = new Set(allowedBids(s, seat).map(bidKey));
   const wanted = [];
   const best = bestTrump(hand);
-  const capacity = trick => Math.min(13, Math.floor(trick + PARTNER_TRICKS + p.margin));
+  // Egne stik + makkers hjælp (makker-esset og et stærkt kort, eller at makker spiller ud i en renonce-kulør).
+  const extra = handRoll(hand) < p.stretch ? 1 : 0;
+  const capacity = trick => Math.min(13, Math.round(trick) + p.partnerHelp + extra);
   // Bliver klør trumf alligevel, meldes "gode" i stedet for en ren melding – det giver dobbelte point.
   const plain = best.suit !== 'C' || !s.rules.bids.gode;
   if (plain) for (let n = 7; n <= capacity(best.tricks); n++) wanted.push({ n, suffix: null });
   for (let n = 7; n <= capacity(ownTricks(hand, 'C')); n++) wanted.push({ n, suffix: 'gode' });
   for (let n = 7; n <= capacity(ownTricks(hand, 'S')); n++) wanted.push({ n, suffix: 'staerke' });
   for (let n = 7; n <= capacity(ownTricks(hand, null)); n++) wanted.push({ n, suffix: 'trumfloese' });
-  for (let n = 7; n <= Math.floor(best.tricks + 0.5 + p.margin); n++) wanted.push({ n, suffix: 'kvarte' });
-  const danger = noloDanger(hand);
-  for (const key of Object.keys(NOLO_EXTRA)) {
-    if (danger <= p.noloSlack - NOLO_EXTRA[key]) wanted.push({ nolo: key });
+  for (let n = 7; n <= Math.round(best.tricks) + extra; n++) wanted.push({ n, suffix: 'kvarte' });
+  for (const key of Object.keys(NOLO_SUM_STEP)) {
+    if (noloFits(p, hand, key)) wanted.push({ nolo: key });
   }
   const options = wanted.filter(b => allowed.has(bidKey(b))).sort((a, b) => bidRank(a) - bidRank(b));
-  // Billigste melding der stadig slår den gældende. Uden en melding: kræv nyt spil ved jernhånd.
-  return options[0] ?? (canIronHand(s, seat) ? { iron: true } : null);
+  // Den højeste trumfmelding hånden kan bære – en højere melding giver flere point, når den går hjem.
+  // Ellers den billigste nolo, der slår den gældende. Uden en melding: kræv nyt spil ved jernhånd.
+  return options.filter(b => !b.nolo).at(-1) ?? options[0] ?? (canIronHand(s, seat) ? { iron: true } : null);
 }
 
 // Fordækt kort: det mindst værdifulde kort uden for trumf (laveste i den korteste kulør).
@@ -240,8 +275,12 @@ function playCard(s, seat, p) {
     if (!s.trick.length && !s.contract.partnerRevealed) return covered;
     legal = legal.filter(x => x !== covered);
   }
-  if (Math.random() < p.gamble) return pick(legal);
-  return s.contract.bid.nolo ? playNolo(s, seat, legal) : playTrump(s, seat, legal);
+  const best = s.contract.bid.nolo ? playNolo(s, seat, legal) : playTrump(s, seat, legal);
+  // Fejl: et andet kort end det bedste. Dog trækker makker altid trumf for melderen, når makker sidder rigtigt.
+  const trump = trumpSuit(s);
+  const drawsTrump = !s.trick.length && trump && !isJoker(best) && suitOf(best) === trump && leadAsPartner(s, seat, legal) === best;
+  if (!drawsTrump && legal.length > 1 && Math.random() < p.gamble) return pick(legal.filter(x => x !== best));
+  return best;
 }
 
 // Makker, der har spillet makker-esset, hjælper melderen, når den selv skal spille ud:

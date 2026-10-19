@@ -12,13 +12,29 @@ mellem hvert trin) og et flueben pr. spiller, der viser eller skjuler kortene. D
 
 Ledige pladser ved bordet kan fyldes med AI-spillere, så man kan spille (eller teste) uden fire mennesker:
 
-| Profil    | Melder                                         | Spiller                         |
-|-----------|------------------------------------------------|---------------------------------|
-| Forsigtig | lavt og sikkert, sjældent nolo                 | få fejl (2 % af kortene)        |
-| Normal    | realistisk                                     | nogle fejl (5 % af kortene)     |
-| Vovehals  | et stik over evne, går gerne efter sol         | tager chancer (8 % af kortene)  |
+| Profil    | Melder                                                                   |
+|-----------|--------------------------------------------------------------------------|
+| Forsigtig | egne stik + 1 fra makker, sjældent nolo                                   |
+| Normal    | egne stik + 2 fra makker                                                  |
+| Vovehals  | egne stik + 2 fra makker, ofte et stik mere (håb om katten)               |
 
-En "fejl" er indtil videre et tilfældigt lovligt kort i stedet for det kort, AI'en ellers ville vælge.
+Egne stik er dem, hånden kan tage, hvis alt går godt: jokere, topkort og længde i trumf (fx E-K eller E-D-B og små),
+esser og konger i sidekulørerne samt renoncer, hvor der kan stikkes med trumf. AI'en melder den højeste trumfmelding,
+hånden kan bære, fordi en højere melding giver flere point, når den går hjem.
+
+Sol vurderes ud fra kortene (esset tæller som 1): i hver kulør er det laveste kort kun sikkert, hvis det er es, 2 eller
+3 – ellers kan modspillerne spille es, 2, 3 og tvinge et stik på det. De næste kort må være lidt højere, så lave kort i
+rækkefølge er godt, og renonce er altid sikkert. Et højt kort, der ikke er sikkert, er farligt (1 farepoint), et
+mellemkort halvfarligt (½). Til sol tåler Forsigtig 1 farepoint, Normal 2 og Vovehals 3; til ren sol, bordlægger og
+ren bordlægger tåler de ½, 1 og 1½.
+
+Desuden må summen af kortenes værdi (esset er 1, B=11, D=12, K=13, jokere 0) højst være 65 / 63 / 62 til sol, 5
+mindre til ren sol, 10 mindre til bordlægger og 15 mindre til ren bordlægger. I en lang kulør (5+ kort) løber
+modspillerne tør, så kun de laveste kort, de kan nå at tvinge ud, tæller fuldt. Resten tæller ikke ved ren sol og
+halvt ved sol, hvor man efter sit ene stik kan sidde fast med udspillet i den lange kulør.
+
+Alle profiler laver lige mange fejl i stikspillet: i 7 % af kortene spiller de et andet kort end det bedste. Undtagelsen
+er makker, der trækker trumf for melderen – det gøres altid.
 
 AI'en ser kun sin egen hånd og det, der er offentligt ved bordet (meldinger, spillede kort, kendt makker). Den
 vurderer hånden med tommelfingerregler (`server/ai.js`), kalder esset i sin længste farve, trækker trumf når den
