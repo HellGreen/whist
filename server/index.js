@@ -549,7 +549,10 @@ io.on('connection', socket => {
   on('table:rules', rules => {
     owner();
     if (table.status !== 'waiting' || table.reserved) throw new UserError('Reglerne kan ikke ændres nu');
-    table.rules = sanitizeRules(rules);
+    const next = sanitizeRules(rules);
+    const same = JSON.stringify({ ...next, cardBack: null }) === JSON.stringify({ ...table.rules, cardBack: null });
+    table.rules = next;
+    if (same) return; // kun bagsiden er skiftet
     for (const id of table.seats) if (id && !isBot(id)) table.ready.delete(id); // alle skal se de nye regler
   });
 

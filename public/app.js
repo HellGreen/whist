@@ -249,6 +249,10 @@ function rulesBox(t, editable) {
       ${editable ? 'Som bordets ejer kan du slå påhæng og nolo-meldinger til og fra.' : ''}</p>
     <h4>Påhæng</h4>${info.suffixes.map(opt).join('')}
     <h4>Nolo-meldinger</h4>${info.nolos.map(opt).join('')}
+    <h4>Bagside</h4>
+    <div class="back-choices">${info.cardBacks.map(b => `<label class="back-choice ${cardBack() === b.key ? 'on' : ''}">
+      <input type="radio" name="cardBack" data-rule-back="${b.key}" ${cardBack() === b.key ? 'checked' : ''} ${editable ? '' : 'disabled'}>
+      <img src="cards/backs/${b.key}.svg" alt=""><span>${esc(b.label)}</span></label>`).join('')}</div>
     <h4>Melderunden</h4>
     <label class="opt"><input type="checkbox" data-rule-opt="hold" ${t.rules.hold !== false ? 'checked' : ''} ${editable ? '' : 'disabled'}>
       <span><b>Hold</b> – en spiller tidligere i melderækkefølgen (forhånd først) må melde det samme som en senere spiller
@@ -305,9 +309,10 @@ function cardHtml(card, { action, disabled, selected, small, fromKat } = {}) {
     ? `<button class="${cls}" data-action="${action}" data-card="${card}" ${disabled ? 'disabled' : ''}>${cardFace(card)}</button>`
     : `<div class="${cls}">${cardFace(card)}</div>`;
 }
-const backHtml = small => (cardTheme() === 'classic'
-  ? `<div class="card classic back ${small ? 'small' : ''}"><img src="cards/classic/back.svg" alt="" draggable="false"></div>`
-  : `<div class="card back ${small ? 'small' : ''}"></div>`);
+// Bagsiden vælges af bordets ejer og er den samme for alle ved bordet.
+const cardBack = () => state.table?.rules?.cardBack ?? 'blaa';
+const backHtml = small => `<div class="card ${cardTheme() === 'classic' ? 'classic' : ''} back ${small ? 'small' : ''}">`
+  + `<img src="cards/backs/${cardBack()}.svg" alt="" draggable="false"></div>`;
 const backs = (n, small) => Array.from({ length: n }, () => backHtml(small)).join('');
 
 // Kulørtegn i rød/sort på en lys plade, så de kan ses i både lyst og mørkt tema.
@@ -1302,10 +1307,11 @@ document.addEventListener('change', e => {
     else replay.hidden.add(Number(hide));
     return render();
   }
-  const { rule, ruleOpt } = e.target.dataset ?? {};
-  if (!rule && !ruleOpt) return;
+  const { rule, ruleOpt, ruleBack } = e.target.dataset ?? {};
+  if (!rule && !ruleOpt && !ruleBack) return;
   const rules = structuredClone(state.table.rules);
   if (rule) rules.bids[rule] = e.target.checked;
+  else if (ruleBack) rules.cardBack = ruleBack;
   else rules[ruleOpt] = e.target.checked;
   socket.emit('table:rules', rules);
 });
