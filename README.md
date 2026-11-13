@@ -106,6 +106,25 @@ Navnet gemmes i browseren, så brug én browser (eller ét InPrivate-/inkognitov
 spiller – på samme pc eller på andre pc'er på netværket – og fyld resten op med AI. Brug headset, ellers hyler det,
 når flere sidder i samme rum.
 
+## Proxmox LXC (script)
+
+Kræver, at GitHub-repoet er **offentligt** (containeren kloner det uden nøgle). På Proxmox-hosten, som root:
+
+```sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/HellGreen/whist/main/ct/whist.sh)"
+```
+
+Scriptet (`ct/whist.sh` + `install/whist-install.sh`, bygget på [community-scripts](https://community-scripts.org))
+opretter en Debian 13-LXC, installerer Node 22, kloner spillet til `/opt/whist`, opretter servicen `whist` og sætter
+Caddy foran på port 80. Så:
+
+- **HTTPS** (nødvendigt til kamera/mikrofon): peg DNS på din offentlige IP, videresend port 80 + 443 til
+  containeren, og kør i containeren `whist-domain whist.ditdomæne.dk`. Caddy henter selv certifikatet.
+- **Opdatering:** kør `update` i containerens konsol, eller `bash -c "$(curl -fsSL …/ct/whist.sh)"` igen og vælg
+  update. Databasen i `/opt/whist/data` røres ikke.
+- **Backup:** tag backup af `/opt/whist/data` (Proxmox-backup af hele containeren dækker det).
+- **Eksisterende database:** stop servicen, kopiér `whist.db` til `/opt/whist/data/` (ejer `whist`), start igen.
+
 ## Drift på Linux-server
 
 Koden går via et privat GitHub-repo: udviklingsmaskinen pusher, og serverne henter selv. Serverne skal altså kun
