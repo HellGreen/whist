@@ -6,7 +6,15 @@
 // giver den "høflige" side (højeste spiller-id) efter. Hver sideindlæsning har sit eget sid, så en
 // spiller der genindlæser, får en frisk forbindelse.
 
-const ICE = [{ urls: 'stun:stun.l.google.com:19302' }];
+let ICE = [{ urls: 'stun:stun.l.google.com:19302' }];
+// Serveren giver STUN og (hvis sat op) TURN med tidsbegrænset kodeord. Hentes igen når kameraet startes.
+async function loadIce() {
+  try {
+    const res = await fetch('/api/ice', { cache: 'no-store' });
+    if (res.ok) ICE = (await res.json()).iceServers;
+  } catch { /* behold STUN */ }
+}
+loadIce();
 const POS_ORDER = [0, 1, 2, 3]; // relativt til mig, med uret: mig, venstre, overfor, højre
 const sid = Math.random().toString(36).slice(2);
 
@@ -121,6 +129,7 @@ async function startLocal() {
     note('Kamera og mikrofon virker kun på https:// eller http://localhost – se README under "Webcam og lyd"');
     return;
   }
+  await loadIce();
   const video = { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15 } };
   try {
     local = await navigator.mediaDevices.getUserMedia({ video, audio: true });

@@ -118,8 +118,12 @@ Scriptet (`ct/whist.sh` + `install/whist-install.sh`, bygget på [community-scri
 opretter en Debian 13-LXC, installerer Node 22, kloner spillet til `/opt/whist`, opretter servicen `whist` og sætter
 Caddy foran på port 80. Så:
 
-- **HTTPS** (nødvendigt til kamera/mikrofon): peg DNS på din offentlige IP, videresend port 80 + 443 til
-  containeren, og kør i containeren `whist-domain whist.ditdomæne.dk`. Caddy henter selv certifikatet.
+- **HTTPS og TURN** (kamera/mikrofon kræver HTTPS, og spillere uden for dit netværk kræver en TURN-server): peg DNS
+  på din offentlige IP (Cloudflare: *DNS only*, ikke proxy), videresend til containeren **TCP 80 og 443** (Caddy),
+  **UDP+TCP 3478** og **UDP 49152–49252** (coturn), og kør i containeren `whist-domain whist.ditdomæne.dk`. Caddy
+  henter selv certifikatet; coturn sættes op med tidsbegrænsede kodeord (hemmeligheden ligger i `/etc/whist/env`).
+  Appen henter ICE-serverne fra `/api/ice` (`WHIST_TURN_HOST` og `WHIST_TURN_SECRET`; uden dem bruges kun STUN).
+  Har du dynamisk IP, så opdatér DNS (DDNS) og genstart `coturn`, så den læser den nye IP.
 - **Opdatering:** kør `update` i containerens konsol, eller `bash -c "$(curl -fsSL …/ct/whist.sh)"` igen og vælg
   update. Databasen i `/opt/whist/data` røres ikke.
 - **Backup:** tag backup af `/opt/whist/data` (Proxmox-backup af hele containeren dækker det).

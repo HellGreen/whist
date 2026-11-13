@@ -1,5 +1,5 @@
 // Webserver: venterum, ét bord, nedtælling, spil, AI-spillere, pause/gem og historik.
-import { randomInt } from 'node:crypto';
+import { createHmac, randomInt } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
@@ -35,6 +35,20 @@ db.recoverSessions();
 
 const app = express();
 app.use(express.static(path.join(ROOT, 'public')));
+// WebRTC (kamera/lyd): STUN er nok i samme netværk; til spillere på internettet kræves en TURN-server (coturn).
+// WHIST_TURN_HOST (fx whist.ditdomæne.dk) og WHIST_TURN_SECRET (= static-auth-secret i coturn) slår den til.
+// Brugernavn/kodeord er tidsbegrænsede (coturns "REST API"), så ingen fast adgangskode ligger i browseren.
+const TURN_HOST = process.env.WHIST_TURN_HOST;
+const TURN_SECRET = process.env.WHIST_TURN_SECRET;
+app.get('/api/ice', (req, res) => {
+  const iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+  if (TURN_HOST && TURN_SECRET) {
+    const username = String(Math.floor(Date.now() / 1000) + 24 * 3600);
+    const credential = createHmac('sha1', TURN_SECRET).update(username).digest('base64');
+    iceServers.push({ urls: [`turn:${TURN_HOST}:3478?transport=udp`, `turn:${TURN_HOST}:3478?transport=tcp`], username, credential });
+  }
+  res.set('Cache-Control', 'no-store').json({ iceServers });
+});
 // HTTPS (valgfrit): browsere giver kun adgang til kamera og mikrofon på https:// eller http://localhost.
 // Til afprøvning fra andre pc'er på netværket: sæt WHIST_TLS_CERT og WHIST_TLS_KEY, eller læg et
 // (selvsigneret) certifikat i data/tls-cert.pem og data/tls-key.pem. På serveren klarer Caddy HTTPS.
